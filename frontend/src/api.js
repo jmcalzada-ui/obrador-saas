@@ -38,7 +38,34 @@ async function peticion(metodo, ruta, cuerpo) {
   return datos;
 }
 
+/** Descarga un archivo protegido (p. ej. una ficha técnica) y lo abre en otra pestaña. */
+async function abrirArchivo(ruta) {
+  const ventana = window.open("", "_blank");
+  const res = await fetch(`/api${ruta}`, { headers: { Authorization: `Bearer ${sesion.get()}` } });
+  if (!res.ok) {
+    ventana?.close();
+    const d = await res.json().catch(() => null);
+    throw new ErrorApi(d?.error || "No se pudo abrir el archivo.", res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  if (ventana) ventana.location.href = url;
+  else window.location.href = url;
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Lee un archivo elegido por el usuario como base64 (sin el prefijo data:). */
+export function leerBase64(archivo) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1]);
+    r.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    r.readAsDataURL(archivo);
+  });
+}
+
 export const api = {
+  abrirArchivo,
+  put: (r, c) => peticion("PUT", r, c),
   get: (r) => peticion("GET", r),
   post: (r, c = {}) => peticion("POST", r, c),
   patch: (r, c) => peticion("PATCH", r, c),

@@ -27,7 +27,7 @@ export default function Recepciones() {
 
   return (
     <>
-      <Cabecera titulo="Recepción" />
+      <Cabecera titulo="Entrada de mercancía" />
       <main className="contenido">
         <div className="buscador">
           <Search size={20} aria-hidden />
@@ -48,13 +48,13 @@ export default function Recepciones() {
           </div>
         )}
         {lista?.map((r) => (
-          <EtiquetaLote key={r.id} r={r} onClick={() => (window.location.hash = `/recepcion/${r.id}`)} />
+          <EtiquetaLote key={r.id} r={r} onClick={() => (window.location.hash = `/entradas/${r.id}`)} />
         ))}
       </main>
       {puede("registrar") && (
         <div className="accion-fija">
-          <button className="boton principal grande" onClick={() => (window.location.hash = "/recepcion/nueva")}>
-            <Plus size={22} aria-hidden /> Registrar recepción
+          <button className="boton principal grande" onClick={() => (window.location.hash = "/entradas/nueva")}>
+            <Plus size={22} aria-hidden /> Registrar entrada
           </button>
         </div>
       )}

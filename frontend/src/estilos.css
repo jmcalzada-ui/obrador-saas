@@ -86,7 +86,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* Barra de navegación inferior (al alcance del pulgar) */
 .nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(var(--secciones, 5), 1fr);
   height: calc(var(--nav) + var(--seguro-abajo));
   padding-bottom: var(--seguro-abajo);
   background: var(--superficie);
@@ -314,3 +314,66 @@ dl.ficha dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
   background: var(--tinta); color: #fff; padding: 12px 18px; border-radius: 12px;
   display: flex; gap: 8px; align-items: center; max-width: calc(100% - 32px);
 }
+
+/* ---------- Sugerencias al escribir ---------- */
+.autocompletar { position: relative; }
+.sugerencias {
+  list-style: none; margin: 4px 0 0; padding: 4px 0;
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
+  background: var(--superficie); border: 1.5px solid var(--azul); border-radius: var(--radio-sm);
+  max-height: 320px; overflow: auto; box-shadow: 0 8px 24px rgba(20, 28, 25, 0.12);
+}
+.sugerencias button {
+  width: 100%; min-height: 48px; padding: 8px 14px; border: 0; background: none; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.sugerencias button:hover, .sugerencias button:focus-visible { background: var(--azul-claro); }
+.sugerencias .crear { flex-direction: row; align-items: center; gap: 8px; color: var(--azul); font-weight: 700; border-top: 1px solid var(--linea); }
+
+/* Sí / No grandes (controles de recepción, proceso térmico) */
+.si-no { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.control-fila { display: flex; flex-direction: column; gap: 6px; }
+.control-fila + .control-fila { padding-top: 12px; border-top: 1px solid var(--linea); }
+
+/* Objetivo de control y resultado al momento */
+.objetivo { font-size: 0.88rem; color: var(--tinta-suave); }
+.resultado-pcc { font-weight: 700; display: inline-flex; gap: 6px; align-items: center; }
+.resultado-pcc.ok { color: var(--verde); }
+.resultado-pcc.mal { color: var(--rojo); }
+
+/* Fila de ingrediente en un preparado */
+.ingrediente { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--linea); border-radius: var(--radio); background: var(--superficie); }
+.ingrediente .cabeza { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lotes { display: flex; flex-direction: column; gap: 6px; }
+.lote-opcion { display: flex; justify-content: space-between; gap: 8px; }
+
+/* ---------- LED de estado de cobro (back office) ---------- */
+.led { display: inline-block; width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; background: #b7bfbb; box-shadow: inset 0 -2px 3px rgba(0,0,0,.25); }
+.led.verde { background: #1fa855; box-shadow: 0 0 0 3px rgba(31,168,85,.18), 0 0 10px rgba(31,168,85,.55), inset 0 -2px 3px rgba(0,0,0,.2); }
+.led.rojo { background: #e0341c; box-shadow: 0 0 0 3px rgba(224,52,28,.18), 0 0 10px rgba(224,52,28,.6), inset 0 -2px 3px rgba(0,0,0,.2); }
+
+/* ---------- Back office ---------- */
+.bo { --bo-ancho: 1200px; }
+.bo .contenido { max-width: var(--bo-ancho); padding-bottom: 48px; }
+.bo-cabecera {
+  position: sticky; top: 0; z-index: 10; background: var(--tinta); color: #fff;
+  display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+}
+.bo-cabecera h1 { font-size: 1.3rem; flex: 1; }
+.bo-cabecera button, .bo-cabecera a { color: #fff; }
+.bo-cabecera .boton { background: transparent; border-color: rgba(255,255,255,.35); min-height: 40px; }
+.tabla-scroll { overflow-x: auto; background: var(--superficie); border: 1px solid var(--linea); border-radius: var(--radio); }
+table.tabla { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+table.tabla th, table.tabla td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+table.tabla th { font-family: var(--rotulo); font-weight: 600; font-size: 0.95rem; color: var(--tinta-suave); background: #f6f8f7; position: sticky; top: 0; }
+table.tabla td.num, table.tabla th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.tabla tbody tr { cursor: pointer; }
+table.tabla tbody tr:hover { background: #f7f9f8; }
+table.tabla tr:last-child td { border-bottom: 0; }
+.datos.cuatro { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.bloques { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+@media (max-width: 899px) { .bo .solo-ancho { display: none; } }
+@media (min-width: 900px) { .bo .solo-estrecho { display: none; } }
+
+/* Pantalla de cuenta bloqueada */
+.bloqueo { min-height: 100dvh; display: flex; flex-direction: column; justify-content: center; gap: 20px; padding: 24px 20px; max-width: 480px; margin: 0 auto; }

@@ -1,14 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Home, Truck, CookingPot, Menu } from "lucide-react";
+import { Home, Truck, CookingPot, Package, Menu, CreditCard } from "lucide-react";
 import { api, sesion } from "./api.js";
-import { SesionContext, ProveedorToast, Cargando } from "./componentes/ui.jsx";
+import { SesionContext, ProveedorToast, Cargando, Aviso, fecha } from "./componentes/ui.jsx";
 import Login from "./pantallas/Login.jsx";
 import CambiarPassword from "./pantallas/CambiarPassword.jsx";
 import Inicio from "./pantallas/Inicio.jsx";
 import Recepciones from "./pantallas/Recepciones.jsx";
 import NuevaRecepcion from "./pantallas/NuevaRecepcion.jsx";
 import RecepcionDetalle from "./pantallas/RecepcionDetalle.jsx";
-import Elaboracion from "./pantallas/Elaboracion.jsx";
+import Preparados from "./pantallas/Preparados.jsx";
+import NuevoPreparado from "./pantallas/NuevoPreparado.jsx";
+import PreparadoDetalle from "./pantallas/PreparadoDetalle.jsx";
+import Productos from "./pantallas/Productos.jsx";
+import ProductoDetalle from "./pantallas/ProductoDetalle.jsx";
 import Mas from "./pantallas/Mas.jsx";
 import Equipo from "./pantallas/Equipo.jsx";
 import MiObrador from "./pantallas/MiObrador.jsx";
@@ -18,23 +22,18 @@ function useRuta() {
   const leer = () => (window.location.hash.replace(/^#/, "") || "/inicio").split("?")[0];
   const [ruta, setRuta] = useState(leer);
   useEffect(() => {
-    const f = () => {
-      setRuta(leer());
-      window.scrollTo(0, 0);
-    };
+    const f = () => { setRuta(leer()); window.scrollTo(0, 0); };
     window.addEventListener("hashchange", f);
     return () => window.removeEventListener("hashchange", f);
   }, []);
   return ruta;
 }
-export const ir = (ruta) => {
-  window.location.hash = ruta;
-};
 
 const SECCIONES = [
   { id: "inicio", texto: "Inicio", icono: Home },
-  { id: "recepcion", texto: "Recepción", icono: Truck },
-  { id: "elaboracion", texto: "Elaboración", icono: CookingPot },
+  { id: "entradas", texto: "Entradas", icono: Truck },
+  { id: "preparados", texto: "Preparados", icono: CookingPot },
+  { id: "productos", texto: "Productos", icono: Package },
   { id: "mas", texto: "Más", icono: Menu },
 ];
 
@@ -44,8 +43,7 @@ export default function App() {
   const cargarSesion = useCallback(async () => {
     if (!sesion.get()) return setEstado({ cargando: false, datos: null });
     try {
-      const datos = await api.get("/auth/me");
-      setEstado({ cargando: false, datos });
+      setEstado({ cargando: false, datos: await api.get("/auth/me") });
     } catch {
       setEstado({ cargando: false, datos: null });
     }
@@ -73,11 +71,14 @@ export default function App() {
   if (estado.cargando) return <Cargando />;
   if (!valor) return <Login onEntrar={cargarSesion} />;
 
+  let contenido;
+  if (["pendiente_pago", "suspendido", "baja"].includes(valor.obrador.estado)) contenido = <CuentaBloqueada />;
+  else if (valor.usuario.debe_cambiar_password) contenido = <CambiarPassword obligatorio onHecho={cargarSesion} />;
+  else contenido = <Shell />;
+
   return (
     <SesionContext.Provider value={valor}>
-      <ProveedorToast>
-        {valor.usuario.debe_cambiar_password ? <CambiarPassword obligatorio onHecho={cargarSesion} /> : <Shell />}
-      </ProveedorToast>
+      <ProveedorToast>{contenido}</ProveedorToast>
     </SesionContext.Provider>
   );
 }
@@ -86,29 +87,90 @@ function Shell() {
   const ruta = useRuta();
   const partes = ruta.split("/").filter(Boolean);
   const seccion = partes[0] || "inicio";
+  const [a, b] = [partes[1], partes[2]];
 
   let pantalla;
-  if (seccion === "recepcion" && partes[1] === "nueva") pantalla = <NuevaRecepcion />;
-  else if (seccion === "recepcion" && partes[1]) pantalla = <RecepcionDetalle id={partes[1]} />;
-  else if (seccion === "recepcion") pantalla = <Recepciones />;
-  else if (seccion === "elaboracion") pantalla = <Elaboracion />;
-  else if (seccion === "mas" && partes[1] === "equipo") pantalla = <Equipo />;
-  else if (seccion === "mas" && partes[1] === "obrador") pantalla = <MiObrador />;
-  else if (seccion === "mas" && partes[1] === "cuenta") pantalla = <CambiarPassword />;
+  if (seccion === "entradas") pantalla = a === "nueva" ? <NuevaRecepcion /> : a ? <RecepcionDetalle id={a} /> : <Recepciones />;
+  else if (seccion === "preparados") pantalla = a === "nuevo" ? <NuevoPreparado /> : a ? <PreparadoDetalle id={a} /> : <Preparados />;
+  else if (seccion === "productos") pantalla = a ? <ProductoDetalle id={a} /> : <Productos />;
+  else if (seccion === "mas" && a === "equipo") pantalla = <Equipo />;
+  else if (seccion === "mas" && a === "obrador") pantalla = <MiObrador />;
+  else if (seccion === "mas" && a === "cuenta") pantalla = <CambiarPassword />;
   else if (seccion === "mas") pantalla = <Mas />;
   else pantalla = <Inicio />;
+  void b;
 
   return (
     <div className="app">
+      <AvisoImpago />
       {pantalla}
       <nav className="nav" aria-label="Secciones">
         {SECCIONES.map(({ id, texto, icono: Icono }) => (
-          <button key={id} aria-current={seccion === id ? "page" : undefined} onClick={() => ir(`/${id}`)}>
+          <button key={id} aria-current={seccion === id ? "page" : undefined} onClick={() => (window.location.hash = `/${id}`)}>
             <Icono size={24} aria-hidden />
             {texto}
           </button>
         ))}
       </nav>
     </div>
+  );
+}
+
+/** Cobro fallido: el gestor ve el aviso con la fecha de suspensión. */
+function AvisoImpago() {
+  const { obrador, usuario } = React.useContext(SesionContext);
+  if (obrador.estado !== "impago" || usuario.rol !== "gestor") return null;
+  return (
+    <div style={{ padding: "12px 16px 0", maxWidth: 720, margin: "0 auto", width: "100%" }}>
+      <Aviso tipo="error">
+        No hemos podido cobrar la cuota. Actualiza la forma de pago antes del {fecha(obrador.fecha_suspension)} para evitar que la cuenta quede en suspenso.{" "}
+        <a href="#/mas/obrador">Actualizar forma de pago</a>
+      </Aviso>
+    </div>
+  );
+}
+
+/** Cuenta pendiente del primer pago o en suspenso: solo el gestor llega aquí. */
+function CuentaBloqueada() {
+  const { obrador, usuario, salir } = React.useContext(SesionContext);
+  const [error, setError] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const pendiente = obrador.estado === "pendiente_pago";
+
+  async function abrir(ruta, cuerpo) {
+    setCargando(true);
+    setError("");
+    try {
+      const { url } = await api.post(ruta, cuerpo);
+      window.location.href = url;
+    } catch (e) {
+      setError(e.message);
+      setCargando(false);
+    }
+  }
+
+  return (
+    <main className="bloqueo">
+      <CreditCard size={40} aria-hidden className="suave" />
+      <h1>{pendiente ? "Falta completar el pago" : obrador.estado === "baja" ? "Cuenta dada de baja" : "Cuenta en suspenso"}</h1>
+      <p>
+        {pendiente
+          ? `Hola ${usuario.nombre.split(" ")[0]}. El alta de ${obrador.nombre} está hecha, pero falta el primer pago. En cuanto se cobre, la cuenta se activa sola.`
+          : obrador.estado === "baja"
+            ? "La suscripción de este obrador se ha cancelado. Si quieres volver, escríbenos."
+            : `No se ha podido cobrar la cuota de ${obrador.nombre}. Tus datos están guardados. Actualiza la forma de pago y el acceso se reactivará automáticamente al cobrarse.`}
+      </p>
+      {error && <Aviso tipo="error">{error}</Aviso>}
+      {pendiente && (
+        <>
+          <button className="boton principal grande bloque" disabled={cargando} onClick={() => abrir("/obrador/completar-pago", { metodo: "card" })}>Pagar con tarjeta</button>
+          <button className="boton grande bloque" disabled={cargando} onClick={() => abrir("/obrador/completar-pago", { metodo: "sepa_debit" })}>Domiciliación bancaria</button>
+        </>
+      )}
+      {obrador.estado === "suspendido" && (
+        <button className="boton principal grande bloque" disabled={cargando} onClick={() => abrir("/obrador/portal-pago")}>Actualizar forma de pago</button>
+      )}
+      <button className="boton bloque" onClick={salir}>Salir</button>
+    </main>
   );
 }

@@ -1,45 +1,88 @@
 # Registro de obrador — servicio multiobrador
 
-Web-app nueva, basada en la app actual de Las Croquetas de la Oliva
-(`registro-obrador`), pensada como servicio por suscripción para muchos
-obradores. **La app actual no se toca**: este repositorio y su despliegue
-son completamente independientes.
+Web-app por suscripción para pequeños obradores (2–30 personas): industria
+cárnica, panaderías, pastelerías, comidas preparadas, catering… Basada en la
+app de Las Croquetas de la Oliva (`registro-obrador`), pero generalista.
+**La app actual no se toca**: este repositorio y su despliegue son
+independientes.
 
-## Qué hay hecho (fase 0–1, plan básico)
+Tres puertas en la misma web:
 
-- **Multiobrador con aislamiento real.** Una base Postgres compartida; cada
-  tabla lleva `obrador_id` y Postgres aplica *Row Level Security*: cada
-  petición solo puede ver y modificar los datos de su obrador, aunque una
-  consulta olvide filtrar. Las referencias entre tablas usan claves
-  compuestas `(obrador_id, id)`, así no se puede enlazar nada con datos de
-  otro obrador.
-- **Base de datos por tablas** (antes todo eran bloques JSON que se
-  reescribían enteros). Recepciones, preparados, producciones, consumos de
-  ingredientes y ajustes de stock en tablas propias. El stock disponible se
-  calcula, no se guarda: dos personas registrando a la vez nunca se pisan.
-- **Login por email**, sesión de 12 h, freno a intentos repetidos, cambio de
-  contraseña obligatorio la primera vez.
-- **Roles**: gestor (todo, uno por obrador), jefe de producción (registra y
-  edita), operario (registra, no edita), observador (solo consulta).
-- **Plazas del plan**: el básico incluye al gestor y una cuenta más; cada
-  usuario extra amplía las plazas. Desactivar a alguien libera su plaza y le
-  corta el acceso al momento.
-- **Módulos por plan preparados**: la suscripción guarda los módulos
-  contratados y el servidor tiene el control (`requireModulo`) listo para
-  escandallos y APPCC, aunque todavía no se usa.
-- **Recepción de mercancía** completa (alta por pasos, listado, detalle con
-  trazabilidad hacia delante, edición, baja y borrado según rol), catálogo de
-  productos, marcas y proveedores, datos del obrador y gestión del equipo.
-- **Interfaz para móvil primero**, instalable como app (PWA), con zonas
-  táctiles grandes, menú inferior y teclado numérico en las cantidades.
+| Dirección | Para quién |
+| --- | --- |
+| `/` | La app de cada obrador (móvil primero, instalable) |
+| `/alta` | Alta de un obrador nuevo: datos, facturación, contacto, acceso y pago |
+| `/admin` | Back office privado de la plataforma |
 
-## Pendiente (siguientes pasos)
+## Qué incluye
 
-1. Preparados y producciones con selección de lotes y descuento de stock.
-2. Importar la réplica de los datos actuales como cliente 1 (desde una
-   exportación de la app actual, sin conectarse a su base).
-3. Alta automática de obradores con pago (Stripe), copias de seguridad por
-   obrador y descarga de datos.
+**App del obrador (plan básico)**
+- **Productos**: nombre general → marcas particulares, cada una con ficha
+  técnica en PDF, precio de referencia, formato, proveedor y alérgenos. La
+  unidad de medida queda fijada por el producto.
+- **Entradas de mercancía**: alta por pasos con sugerencias al escribir
+  (producto, marca, proveedor), lote, cantidad, bultos, caducidad, precio por
+  unidad o total, temperatura (con aviso según conservación), controles de
+  envase, etiquetado y transporte, y estado de la mercancía.
+- **Preparados internos**: los nombres se guardan y se ofrecen la vez
+  siguiente con sus ingredientes habituales. La primera vez se indica si
+  llevan **proceso térmico**; si es así, cada lote registra cocción
+  (temperatura y tiempo) y abatimiento (temperaturas y horas), con objetivos
+  ajustables (por defecto ≥ 75 °C y ≤ 10 °C en 120 min) y medida correctora
+  obligatoria si algo queda fuera. Ingredientes con lote y stock, caducidad
+  propuesta por vida útil, trazabilidad hacia atrás y hacia delante.
+- **Roles**: gestor (todo), jefe de producción (registra y edita), operario
+  (registra), observador (consulta). Plan básico = gestor + 1 usuario.
+
+**Cobros**
+- Alta con tarjeta o domiciliación SEPA en la página segura de Stripe (los
+  datos bancarios nunca pasan por nuestro servidor).
+- Cobro correcto → cuenta activa al momento + correo con factura e
+  información de la contratación.
+- Cobro fallido → correo inmediato; recordatorio a los 5 días avisando de
+  la suspensión; a los 10 días la cuenta queda en suspenso (el gestor solo
+  puede entrar para actualizar la forma de pago). Al cobrarse, se reactiva
+  sola.
+
+**Back office**
+- Acceso privado, separado de los obradores. Administrador principal y
+  otros administradores.
+- Clientes con LED verde (cobrado) / rojo (cobro fallido) / gris (sin
+  contratar), fecha de alta, contratación, próximo cobro, cobrado en 12
+  meses y desde el alta, y último uso de la app.
+- Ficha de cliente: facturación, contacto, pagos, usuarios, correos
+  enviados y acciones (reactivar o suspender a mano, con motivo).
+
+## Variables de entorno (Railway → Variables)
+
+| Variable | Para qué |
+| --- | --- |
+| `DATABASE_URL` | Postgres del proyecto (`${{Postgres.DATABASE_URL}}`) |
+| `JWT_SECRET` | Cadena larga y aleatoria |
+| `NODE_ENV` | `production` |
+| `URL_PUBLICA` | Dirección pública, p. ej. `https://app.tuservicio.com` |
+| `STRIPE_SECRET_KEY` | Clave secreta de Stripe (`sk_test_…` para pruebas) |
+| `STRIPE_WEBHOOK_SECRET` | Secreto del webhook (`whsec_…`) |
+| `STRIPE_PRECIO_BASICO` | Id del precio de 29,90 €/mes (`price_…`) |
+| `STRIPE_PRECIO_USUARIO_EXTRA` | Id del precio de 3 €/mes por usuario |
+| `RESEND_API_KEY` | Envío de correos (resend.com) |
+| `CORREO_REMITENTE` | p. ej. `Tu Servicio <hola@tuservicio.com>` |
+
+Sin `STRIPE_SECRET_KEY` y fuera de producción, los pagos se **simulan** (el
+alta se activa al momento y el back office permite simular cobros correctos
+o fallidos). Sin `RESEND_API_KEY`, los correos se registran pero no se envían.
+
+### Configurar Stripe
+1. Productos: «Plan básico» 29,90 €/mes y «Usuario extra» 3 €/mes
+   (recurrentes, mensuales). Copia sus ids de precio.
+2. Activa tarjeta y SEPA Direct Debit como métodos de pago.
+3. Webhook a `https://TU-DOMINIO/api/stripe/webhook` con los eventos
+   `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
+   `customer.subscription.updated` y `customer.subscription.deleted`.
+4. Portal de clientes: permite actualizar la forma de pago.
+5. En *Recuperación de ingresos*, que Stripe **no cancele** la suscripción
+   antes de 10 días (la suspensión la gestiona la app).
+6. Impuestos (IGIC/IVA) y numeración de facturas: a definir con la gestoría.
 
 ## Desarrollo en local
 
@@ -47,14 +90,15 @@ Necesitas Node 20+ y Postgres 15+.
 
 ```bash
 cd backend && npm install
-DATABASE_URL=postgres://usuario:clave@localhost:5432/obrador_dev npm run migrate
-DATABASE_URL=... npm run crear-obrador -- --nombre "Obrador de pruebas" --email tu@email.com --gestor "Tu nombre"
-DATABASE_URL=... npm run dev          # API en http://localhost:3000
-
-cd ../frontend && npm install && npm run dev   # app en http://localhost:5173
+export DATABASE_URL=postgres://usuario:clave@localhost:5432/obrador_dev
+npm run migrate
+npm run crear-admin -- --email tu@email.com --nombre "Tu nombre" --principal
+npm run crear-obrador -- --nombre "Obrador de pruebas" --email gestor@email.com --gestor "Nombre"
+npm run dev                                   # API en http://localhost:3000
+cd ../frontend && npm install && npm run dev  # app en http://localhost:5173
 ```
 
-Pruebas (usan una base aparte que se borra en cada ejecución):
+Pruebas (base aparte que se borra en cada ejecución):
 
 ```bash
 cd backend && TEST_DATABASE_URL=postgres://usuario:clave@localhost:5432/obrador_test npm test
@@ -62,30 +106,21 @@ cd backend && TEST_DATABASE_URL=postgres://usuario:clave@localhost:5432/obrador_
 
 ## Despliegue en Railway (proyecto NUEVO)
 
-No uses el proyecto de Railway de la app actual.
-
-1. En Railway: **New Project → Deploy from GitHub repo → `obrador-saas`**.
-2. En ese proyecto: **+ New → Database → PostgreSQL**.
-3. En el servicio de la app, pestaña **Variables**:
-   - `DATABASE_URL` → referencia a la del Postgres (`${{Postgres.DATABASE_URL}}`)
-   - `JWT_SECRET` → una cadena larga y aleatoria
-   - `NODE_ENV` → `production`
-4. Región: elige una europea en **Settings → Region**.
-5. Al desplegar, el servidor aplica solo las migraciones de la base.
-6. Crea el obrador de pruebas desde la consola del servicio
-   (**⋮ → Shell** o `railway run`):
-   `npm run crear-obrador --prefix backend -- --nombre "Obrador de pruebas" --email tu@email.com --gestor "Juan"`
+1. **New Project → Deploy from GitHub repo → `obrador-saas`**, región europea.
+2. **+ New → Database → PostgreSQL**.
+3. Variables de la tabla anterior.
+4. El servidor aplica solo las migraciones al arrancar.
+5. Desde la consola del servicio: `npm run crear-admin --prefix backend -- --email … --nombre … --principal`.
 
 ## Estructura
 
 ```
-backend/
-  src/db/migrations/   esquema de la base (SQL), se aplica solo
-  src/db/pool.js       enObrador(): transacción aislada a un obrador
-  src/auth/            token, permisos por rol, control de módulos
-  src/routes/          API: auth, usuarios, obrador, catálogo, recepciones
-  test/                pruebas de aislamiento, roles y plazas
-frontend/
-  src/pantallas/       pantallas de la app
-  src/componentes/     piezas comunes (etiqueta de lote, hojas, campos)
+backend/src/db/migrations/   esquema de la base (SQL), se aplica solo
+backend/src/db/pool.js       enObrador(): transacción aislada a un obrador (RLS)
+backend/src/lib/cobros.js    ciclo de cobro, impagos y suspensión
+backend/src/lib/correo.js    plantillas y envío de correos
+backend/src/routes/          API: auth, alta, admin, catálogo, recepciones, preparados…
+backend/test/                aislamiento, roles, cobros, back office, preparados
+frontend/src/pantallas/      app del obrador y alta
+frontend/src/admin/          back office
 ```

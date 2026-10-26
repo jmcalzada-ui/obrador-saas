@@ -13,6 +13,7 @@ function saludo() {
 export default function Inicio() {
   const { usuario, obrador, puede } = useSesion();
   const [datos, setDatos] = useState(null);
+  const [pendientes, setPendientes] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -20,6 +21,9 @@ export default function Inicio() {
       .get("/recepciones?con_stock=1&limite=500")
       .then(({ recepciones }) => setDatos(recepciones))
       .catch((e) => setError(e.message));
+    api.get("/preparados?limite=100")
+      .then(({ preparados }) => setPendientes(preparados.filter((p) => p.control_termico?.estado === "pendiente")))
+      .catch(() => {});
   }, []);
 
   const caducan = datos?.filter((r) => {
@@ -51,6 +55,21 @@ export default function Inicio() {
                 <span>caducan en 7 días o menos</span>
               </div>
             </div>
+            {pendientes.length > 0 && (
+              <section className="seccion">
+                <h2>Abatimientos por completar</h2>
+                <ul className="lista">
+                  {pendientes.map((p) => (
+                    <li key={p.id}>
+                      <button className="item" onClick={() => (window.location.hash = `/preparados/${p.id}`)}>
+                        <span className="principal"><strong>{p.producto}</strong><span className="suave pequeno">Lote {p.num_lote}</span></span>
+                        <span className="distintivo ambar">Pendiente</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             {caducan.length > 0 && (
               <section className="seccion">
                 <h2>Usar primero</h2>
@@ -58,7 +77,7 @@ export default function Inicio() {
                   .sort((a, b) => (a.caducidad || "").localeCompare(b.caducidad || ""))
                   .slice(0, 5)
                   .map((r) => (
-                    <EtiquetaLote key={r.id} r={r} onClick={() => (window.location.hash = `/recepcion/${r.id}`)} />
+                    <EtiquetaLote key={r.id} r={r} onClick={() => (window.location.hash = `/entradas/${r.id}`)} />
                   ))}
               </section>
             )}
@@ -72,8 +91,8 @@ export default function Inicio() {
       </main>
       {puede("registrar") && (
         <div className="accion-fija">
-          <button className="boton principal grande" onClick={() => (window.location.hash = "/recepcion/nueva")}>
-            <Plus size={22} aria-hidden /> Registrar recepción
+          <button className="boton principal grande" onClick={() => (window.location.hash = "/entradas/nueva")}>
+            <Plus size={22} aria-hidden /> Registrar entrada
           </button>
         </div>
       )}

@@ -159,7 +159,7 @@ adminRouter.get(
       // Nunca se envían al navegador los identificadores internos de Stripe.
       delete suscripcion.stripe_customer_id;
       delete suscripcion.stripe_subscription_id;
-      return { resumen, obrador, suscripcion, pagos, usuarios, emails, acciones };
+      return { resumen, obrador, suscripcion, pagos, usuarios, emails, acciones, pagosSimulados: config.pagosSimulados };
     });
     if (!datos) return res.status(404).json({ error: "Cliente no encontrado." });
     res.json(datos);
