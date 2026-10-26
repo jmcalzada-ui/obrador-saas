@@ -2,7 +2,8 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { comoSistema } from "../db/pool.js";
-import { firmarToken, requireAuth, db } from "../auth/middleware.js";
+import { config } from "../config.js";
+import { firmarToken, requireAuthPermitiendoBloqueo as requireAuth, db, ESTADOS_BLOQUEADOS } from "../auth/middleware.js";
 import { permisosDe } from "../auth/permisos.js";
 import { hashPassword, ruta, validar, verificarPassword } from "../lib/utiles.js";
 
@@ -31,7 +32,7 @@ authRouter.post(
     // Tarea de sistema: el email decide a qué obrador pertenece el usuario.
     const usuario = await comoSistema(async (c) => {
       const { rows } = await c.query(
-        `SELECT u.id, u.obrador_id, u.password_hash, u.activo, o.estado AS estado_obrador
+        `SELECT u.id, u.obrador_id, u.password_hash, u.activo, u.rol, o.estado AS estado_obrador
            FROM usuarios u JOIN obradores o ON o.id = u.obrador_id
           WHERE lower(u.email) = lower($1)`,
         [datos.email]
@@ -40,8 +41,12 @@ authRouter.post(
     });
     const ok = usuario && (await verificarPassword(datos.password, usuario.password_hash));
     if (!ok || !usuario.activo) return res.status(401).json({ error: "Email o contraseña incorrectos." });
-    if (["suspendido", "baja"].includes(usuario.estado_obrador)) {
-      return res.status(402).json({ error: "La cuenta de este obrador está suspendida.", codigo: "obrador_suspendido" });
+    // Con la cuenta bloqueada solo entra el gestor, para poder regularizar el pago.
+    if (ESTADOS_BLOQUEADOS.includes(usuario.estado_obrador) && usuario.rol !== "gestor") {
+      const msg = usuario.estado_obrador === "pendiente_pago"
+        ? "La cuenta de tu obrador todavía no está activa."
+        : "La cuenta de tu obrador está en suspenso. Avisa al gestor para que regularice el pago.";
+      return res.status(402).json({ error: msg, codigo: `obrador_${usuario.estado_obrador}` });
     }
     await comoSistema((c) => c.query("UPDATE usuarios SET ultimo_acceso = now() WHERE id = $1", [usuario.id]));
     res.json({ token: firmarToken(usuario) });
@@ -55,9 +60,11 @@ authRouter.get(
   ruta(async (req, res) => {
     const obrador = await db(req, async (c) => {
       const { rows } = await c.query(
-        `SELECT o.id, o.nombre, o.estado, s.plan, s.modulos, s.prueba_hasta,
+        `SELECT o.id, o.nombre, o.estado, s.plan, s.modulos, s.impago_desde, s.proximo_cobro,
+                s.impago_desde + make_interval(days => $1) AS fecha_suspension,
                 s.usuarios_incluidos + s.usuarios_extra AS plazas_total
-           FROM obradores o JOIN suscripciones s ON s.obrador_id = o.id`
+           FROM obradores o JOIN suscripciones s ON s.obrador_id = o.id`,
+        [config.impagos.diasSuspension]
       );
       return rows[0];
     });

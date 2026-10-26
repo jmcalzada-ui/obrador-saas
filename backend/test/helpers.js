@@ -42,6 +42,7 @@ export function cliente(token) {
     get: (u) => auth(request(app).get(u)),
     post: (u, b) => auth(request(app).post(u)).send(b ?? {}),
     patch: (u, b) => auth(request(app).patch(u)).send(b ?? {}),
+    put: (u, b) => auth(request(app).put(u)).send(b ?? {}),
     delete: (u) => auth(request(app).delete(u)),
   };
 }

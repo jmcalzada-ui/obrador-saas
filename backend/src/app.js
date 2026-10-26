@@ -8,6 +8,10 @@ import { usuariosRouter } from "./routes/usuarios.js";
 import { obradorRouter } from "./routes/obrador.js";
 import { catalogoRouter } from "./routes/catalogo.js";
 import { recepcionesRouter } from "./routes/recepciones.js";
+import { altaRouter } from "./routes/alta.js";
+import { preparadosRouter, stockRouter } from "./routes/preparados.js";
+import { adminRouter } from "./routes/admin.js";
+import { stripeWebhookRouter } from "./routes/stripe-webhook.js";
 import { errorPostgres } from "./lib/utiles.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,7 +22,11 @@ export function crearApp() {
   const app = express();
   app.set("trust proxy", 1); // Railway pone un proxy delante: IP real para el límite de intentos de login
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(express.json({ limit: "2mb" }));
+  // El aviso de Stripe necesita el cuerpo tal cual (firma): va antes de express.json().
+  app.use("/api/stripe/webhook", stripeWebhookRouter);
+  const json = express.json({ limit: "2mb" });
+  // La subida de fichas técnicas en PDF tiene su propio límite, mayor.
+  app.use((req, res, next) => (req.method === "PUT" && /\/ficha$/.test(req.path) ? next() : json(req, res, next)));
 
   app.get("/api/salud", (req, res) => res.json({ ok: true }));
   app.use("/api/auth", authRouter);
@@ -26,6 +34,10 @@ export function crearApp() {
   app.use("/api/obrador", obradorRouter);
   app.use("/api/catalogo", catalogoRouter);
   app.use("/api/recepciones", recepcionesRouter);
+  app.use("/api/preparados", preparadosRouter);
+  app.use("/api/stock", stockRouter);
+  app.use("/api/alta", altaRouter);
+  app.use("/api/admin", adminRouter);
   app.use("/api", (req, res) => res.status(404).json({ error: "Ruta no encontrada." }));
 
   if (fs.existsSync(path.join(publicDir, "index.html"))) {

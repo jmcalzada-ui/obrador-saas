@@ -9,7 +9,8 @@ recepcionesRouter.use(requireAuth);
 const SELECT = `
   SELECT r.id, r.fecha, r.producto_id, p.nombre AS producto, r.marca_id, m.nombre AS marca,
          r.proveedor_id, pr.nombre AS proveedor, r.num_lote, r.caducidad, r.factura, r.temp_entrada,
-         r.estado_entrada, r.cantidad, r.unidad, r.precio_total,
+         r.estado_entrada, r.cantidad, r.unidad, r.bultos, r.precio_total,
+         r.control_envase, r.control_etiquetado, r.control_transporte,
          CASE WHEN r.cantidad > 0 AND r.precio_total IS NOT NULL THEN round(r.precio_total / r.cantidad, 4) END AS precio_unidad,
          s.disponible, r.observaciones, r.activo, r.creado_en, r.modificado_en,
          uc.nombre AS creado_por_nombre, um.nombre AS modificado_por_nombre
@@ -86,8 +87,13 @@ const esquemaRecepcion = z.object({
   temp_entrada: z.number().min(-40).max(99).nullable().optional(),
   estado_entrada: z.enum(["conforme", "no_conforme", "conforme_con_incidencia"]).default("conforme"),
   cantidad: z.number({ invalid_type_error: "Indica la cantidad." }).positive("La cantidad debe ser mayor que 0."),
-  unidad: z.enum(["kg", "g", "l", "ml", "ud"]),
+  bultos: z.number().int().positive().nullable().optional(),
+  // Precio: total sin impuestos o por unidad de medida (se guarda el total).
   precio_total: z.number().min(0).nullable().optional(),
+  precio_unidad: z.number().min(0).nullable().optional(),
+  control_envase: z.boolean().nullable().optional(),
+  control_etiquetado: z.boolean().nullable().optional(),
+  control_transporte: z.boolean().nullable().optional(),
   observaciones: z.string().max(2000).default(""),
 });
 
@@ -98,16 +104,23 @@ recepcionesRouter.post(
     const d = validar(esquemaRecepcion, req.body, res);
     if (!d) return;
     const recepcion = await db(req, async (c) => {
+      // La unidad la fija el producto.
+      const { rows: [p] } = await c.query("SELECT unidad_medida FROM productos WHERE id = $1", [d.producto_id]);
+      if (!p) return null;
+      const precioTotal = d.precio_total ?? (d.precio_unidad != null ? Math.round(d.precio_unidad * d.cantidad * 100) / 100 : null);
       const { rows: [{ id }] } = await c.query(
         `INSERT INTO recepciones (obrador_id, fecha, producto_id, marca_id, proveedor_id, num_lote, caducidad, factura,
-                                  temp_entrada, estado_entrada, cantidad, unidad, precio_total, observaciones, creado_por)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+                                  temp_entrada, estado_entrada, cantidad, unidad, bultos, precio_total, observaciones,
+                                  control_envase, control_etiquetado, control_transporte, creado_por)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,
         [req.usuario.obrador_id, d.fecha, d.producto_id, d.marca_id ?? null, d.proveedor_id ?? null, d.num_lote,
-         d.caducidad ?? null, d.factura, d.temp_entrada ?? null, d.estado_entrada, d.cantidad, d.unidad,
-         d.precio_total ?? null, d.observaciones, req.usuario.id]
+         d.caducidad ?? null, d.factura, d.temp_entrada ?? null, d.estado_entrada, d.cantidad, p.unidad_medida,
+         d.bultos ?? null, precioTotal, d.observaciones, d.control_envase ?? null, d.control_etiquetado ?? null,
+         d.control_transporte ?? null, req.usuario.id]
       );
       return (await c.query(`${SELECT} WHERE r.id = $1`, [id])).rows[0];
     });
+    if (!recepcion) return res.status(400).json({ error: "Elige un producto del catálogo." });
     res.status(201).json({ recepcion });
   })
 );
@@ -117,8 +130,10 @@ recepcionesRouter.patch(
   "/:id",
   requirePermiso("editar"),
   ruta(async (req, res) => {
-    const d = validar(esquemaRecepcion.partial().extend({ activo: z.boolean().optional() }), req.body, res);
+    const d = validar(esquemaRecepcion.partial().omit({ producto_id: true }).extend({ activo: z.boolean().optional() }), req.body, res);
     if (!d) return;
+    if (d.precio_unidad != null && d.precio_total == null && d.cantidad != null) d.precio_total = Math.round(d.precio_unidad * d.cantidad * 100) / 100;
+    delete d.precio_unidad;
     const campos = Object.keys(d).filter((k) => d[k] !== undefined);
     if (!campos.length) return res.status(400).json({ error: "No hay cambios." });
     const r = await db(req, async (c) => {

@@ -1,4 +1,5 @@
-// Alta manual de un obrador (hasta que exista el alta automática con pago).
+// Alta manual de un obrador ya activo, sin pasar por el pago (p. ej. el
+// obrador de pruebas o un cliente con condiciones especiales).
 // Uso:
 //   npm run crear-obrador -- --nombre "Obrador de pruebas" --email gestor@ejemplo.com --gestor "Nombre Apellido"
 import { parseArgs } from "node:util";
@@ -11,7 +12,6 @@ const { values } = parseArgs({
     nombre: { type: "string" },
     email: { type: "string" },
     gestor: { type: "string" },
-    dias: { type: "string", default: "14" },
   },
 });
 
@@ -26,7 +26,6 @@ try {
     nombre: values.nombre,
     gestorEmail: values.email,
     gestorNombre: values.gestor,
-    diasPrueba: Number(values.dias),
   });
   console.log(`\nObrador creado: ${r.obrador.nombre} (${r.obrador.id})`);
   console.log(`Gestor: ${r.gestor.email}`);

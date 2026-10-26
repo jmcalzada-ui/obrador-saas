@@ -15,4 +15,34 @@ export const config = {
   jwtSecret: requerida("JWT_SECRET", "solo-para-desarrollo-local-no-usar-en-produccion"),
   jwtExpira: process.env.JWT_EXPIRA || "12h",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
+
+  // Dirección pública de la app (enlaces en los correos y vuelta desde Stripe).
+  urlPublica: (process.env.URL_PUBLICA || "http://localhost:5173").replace(/\/$/, ""),
+
+  // Stripe (cobros). Sin clave, el alta funciona en "pagos simulados" solo fuera de producción.
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || null,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || null,
+    precios: {
+      basico: process.env.STRIPE_PRECIO_BASICO || null,           // 29,90 €/mes
+      usuarioExtra: process.env.STRIPE_PRECIO_USUARIO_EXTRA || null, // 3 €/mes por usuario
+    },
+  },
+  pagosSimulados: !produccion && !process.env.STRIPE_SECRET_KEY,
+
+  // Correo transaccional (Resend). Sin clave, los correos se registran pero no se envían.
+  correo: {
+    resendApiKey: process.env.RESEND_API_KEY || null,
+    remitente: process.env.CORREO_REMITENTE || "Registro de obrador <no-responder@example.com>",
+    responderA: process.env.CORREO_RESPONDER_A || null,
+  },
+
+  // Calendario de impagos: aviso al fallar, recordatorio y suspensión.
+  impagos: {
+    diasRecordatorio: Number(process.env.DIAS_RECORDATORIO_IMPAGO) || 5,
+    diasSuspension: Number(process.env.DIAS_SUSPENSION_IMPAGO) || 10,
+  },
+
+  // Precios del plan (para mostrar y calcular el importe; Stripe cobra lo suyo).
+  tarifas: { basico: 29.9, usuarioExtra: 3 },
 };

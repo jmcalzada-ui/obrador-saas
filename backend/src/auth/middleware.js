@@ -9,42 +9,65 @@ export function firmarToken(usuario) {
   });
 }
 
+export const ESTADOS_BLOQUEADOS = ["pendiente_pago", "suspendido", "baja"];
+const MENSAJE_BLOQUEO = {
+  pendiente_pago: "La cuenta de este obrador está pendiente del primer pago.",
+  suspendido: "La cuenta de este obrador está en suspenso por un pago pendiente.",
+  baja: "La cuenta de este obrador está dada de baja.",
+};
+
 /**
  * Verifica el token y comprueba en la base de datos que el usuario sigue
- * activo y que su obrador no está suspendido (si el gestor desactiva a
- * alguien, pierde el acceso al momento, sin esperar a que caduque el token).
+ * activo y que su obrador tiene acceso (si el gestor desactiva a alguien,
+ * pierde el acceso al momento, sin esperar a que caduque el token).
  * Deja en req.usuario los datos actuales (el rol se lee de la base, no del token).
+ *
+ * Con un obrador suspendido o pendiente de pago solo se permiten las rutas
+ * marcadas con { permitirBloqueado: true } (ver la sesión y regularizar el pago).
  */
-export async function requireAuth(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) return res.status(401).json({ error: "No has iniciado sesión." });
-  let datos;
-  try {
-    datos = jwt.verify(token, config.jwtSecret);
-  } catch {
-    return res.status(401).json({ error: "Tu sesión ha caducado. Vuelve a iniciar sesión." });
-  }
-  try {
-    const usuario = await enObrador(datos.obr, async (db) => {
-      const { rows } = await db.query(
-        `SELECT u.id, u.obrador_id, u.email, u.nombre, u.rol, u.activo, u.debe_cambiar_password, o.estado AS estado_obrador
-           FROM usuarios u JOIN obradores o ON o.id = u.obrador_id
-          WHERE u.id = $1`,
-        [datos.sub]
-      );
-      return rows[0];
-    });
-    if (!usuario || !usuario.activo) return res.status(401).json({ error: "Tu usuario está desactivado." });
-    if (["suspendido", "baja"].includes(usuario.estado_obrador)) {
-      return res.status(402).json({ error: "La cuenta de este obrador está suspendida.", codigo: "obrador_suspendido" });
+function crearRequireAuth({ permitirBloqueado = false } = {}) {
+  return async function requireAuth(req, res, next) {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ error: "No has iniciado sesión." });
+    let datos;
+    try {
+      datos = jwt.verify(token, config.jwtSecret);
+      if (datos.aud === "backoffice") throw new Error("token de back office");
+    } catch {
+      return res.status(401).json({ error: "Tu sesión ha caducado. Vuelve a iniciar sesión." });
     }
-    req.usuario = usuario;
-    next();
-  } catch (err) {
-    next(err);
-  }
+    try {
+      const usuario = await enObrador(datos.obr, async (db) => {
+        const { rows } = await db.query(
+          `SELECT u.id, u.obrador_id, u.email, u.nombre, u.rol, u.activo, u.debe_cambiar_password, u.ultimo_acceso,
+                  o.estado AS estado_obrador
+             FROM usuarios u JOIN obradores o ON o.id = u.obrador_id
+            WHERE u.id = $1`,
+          [datos.sub]
+        );
+        const u = rows[0];
+        // Último uso de la app (para el back office): como mucho una escritura cada 5 min.
+        if (u && (!u.ultimo_acceso || Date.now() - new Date(u.ultimo_acceso) > 5 * 60 * 1000)) {
+          await db.query("UPDATE usuarios SET ultimo_acceso = now() WHERE id = $1", [u.id]);
+        }
+        return u;
+      });
+      if (!usuario || !usuario.activo) return res.status(401).json({ error: "Tu usuario está desactivado." });
+      if (ESTADOS_BLOQUEADOS.includes(usuario.estado_obrador) && !permitirBloqueado) {
+        return res.status(402).json({ error: MENSAJE_BLOQUEO[usuario.estado_obrador], codigo: `obrador_${usuario.estado_obrador}` });
+      }
+      delete usuario.ultimo_acceso;
+      req.usuario = usuario;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
 }
+
+export const requireAuth = crearRequireAuth();
+export const requireAuthPermitiendoBloqueo = crearRequireAuth({ permitirBloqueado: true });
 
 export function requirePermiso(permiso) {
   return (req, res, next) => {
