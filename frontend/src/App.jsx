@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Home, Truck, CookingPot, Package, Menu, CreditCard } from "lucide-react";
+import { Home, Truck, CookingPot, ChefHat, Package, Menu, CreditCard } from "lucide-react";
 import { api, sesion } from "./api.js";
 import { SesionContext, ProveedorToast, Cargando, Aviso, fecha } from "./componentes/ui.jsx";
 import Login from "./pantallas/Login.jsx";
@@ -29,12 +29,14 @@ function useRuta() {
   return ruta;
 }
 
+// "texto" se ve en el móvil (barra inferior); "largo", en el ordenador (barra lateral).
 const SECCIONES = [
   { id: "inicio", texto: "Inicio", icono: Home },
-  { id: "entradas", texto: "Entradas", icono: Truck },
-  { id: "preparados", texto: "Preparados", icono: CookingPot },
   { id: "productos", texto: "Productos", icono: Package },
-  { id: "mas", texto: "Más", icono: Menu },
+  { id: "entradas", texto: "Entradas", largo: "Entradas de mercancía", icono: Truck },
+  { id: "intermedia", texto: "Intermedia", largo: "Producción intermedia", icono: CookingPot },
+  { id: "final", texto: "Final", largo: "Producto final", icono: ChefHat },
+  { id: "mas", texto: "Más", largo: "Equipo y cuenta", icono: Menu },
 ];
 
 export default function App() {
@@ -84,14 +86,19 @@ export default function App() {
 }
 
 function Shell() {
+  const { obrador } = React.useContext(SesionContext);
   const ruta = useRuta();
   const partes = ruta.split("/").filter(Boolean);
-  const seccion = partes[0] || "inicio";
+  // Enlaces antiguos: #/preparados → #/intermedia
+  const seccion = partes[0] === "preparados" ? "intermedia" : partes[0] || "inicio";
   const [a, b] = [partes[1], partes[2]];
 
   let pantalla;
   if (seccion === "entradas") pantalla = a === "nueva" ? <NuevaRecepcion /> : a ? <RecepcionDetalle id={a} /> : <Recepciones />;
-  else if (seccion === "preparados") pantalla = a === "nuevo" ? <NuevoPreparado /> : a ? <PreparadoDetalle id={a} /> : <Preparados />;
+  else if (seccion === "intermedia" || seccion === "final") {
+    const k = `${seccion}-${a || ""}`;
+    pantalla = a === "nuevo" ? <NuevoPreparado key={k} tipo={seccion} /> : a ? <PreparadoDetalle key={k} id={a} tipo={seccion} /> : <Preparados key={k} tipo={seccion} />;
+  }
   else if (seccion === "productos") pantalla = a ? <ProductoDetalle id={a} /> : <Productos />;
   else if (seccion === "mas" && a === "equipo") pantalla = <Equipo />;
   else if (seccion === "mas" && a === "obrador") pantalla = <MiObrador />;
@@ -104,11 +111,16 @@ function Shell() {
     <div className="app">
       <AvisoImpago />
       {pantalla}
-      <nav className="nav" aria-label="Secciones">
-        {SECCIONES.map(({ id, texto, icono: Icono }) => (
+      <nav className="nav" aria-label="Secciones" style={{ "--secciones": SECCIONES.length }}>
+        <div className="nav-marca" aria-hidden>
+          <img src="/icono.svg" alt="" width="36" height="36" />
+          <span><strong>Registro de obrador</strong><small>{obrador.nombre}</small></span>
+        </div>
+        {SECCIONES.map(({ id, texto, largo, icono: Icono }) => (
           <button key={id} aria-current={seccion === id ? "page" : undefined} onClick={() => (window.location.hash = `/${id}`)}>
             <Icono size={24} aria-hidden />
-            {texto}
+            <span className="corto">{texto}</span>
+            <span className="largo">{largo || texto}</span>
           </button>
         ))}
       </nav>

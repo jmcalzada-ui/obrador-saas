@@ -63,8 +63,35 @@ export function leerBase64(archivo) {
   });
 }
 
+/**
+ * Descarga un informe (Excel o PDF) con la sesión actual. El PDF se abre en
+ * otra pestaña para imprimirlo; el Excel se guarda como archivo.
+ */
+async function descargar(ruta, nombre, abrir = false) {
+  const ventana = abrir ? window.open("", "_blank") : null;
+  const res = await fetch(`/api${ruta}`, { headers: { Authorization: `Bearer ${sesion.get()}` } });
+  if (!res.ok) {
+    ventana?.close();
+    const d = await res.json().catch(() => null);
+    throw new ErrorApi(d?.error || "No se pudo generar el informe.", res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  if (ventana) {
+    ventana.location.href = url;
+  } else {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nombre;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export const api = {
   abrirArchivo,
+  descargar,
   put: (r, c) => peticion("PUT", r, c),
   get: (r) => peticion("GET", r),
   post: (r, c = {}) => peticion("POST", r, c),

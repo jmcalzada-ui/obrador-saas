@@ -77,16 +77,16 @@ export default function RecepcionDetalle({ id }) {
             <section className="seccion">
               <h2>Dónde se ha usado</h2>
               {datos.usos.length === 0 ? (
-                <p className="suave">Este lote todavía no se ha usado en ningún preparado.</p>
+                <p className="suave">Este lote todavía no se ha usado en ninguna elaboración.</p>
               ) : (
                 <ul className="lista">
                   {datos.usos.map((u, i) => (
                     <li key={i}>
-                      <div className="item" role={u.destino_tipo === "preparado" ? "link" : undefined}
-                        onClick={() => u.destino_tipo === "preparado" && (window.location.hash = `/preparados/${u.destino_id}`)}>
+                      <div className="item" role="link"
+                        onClick={() => (window.location.hash = u.destino_tipo === "preparado" ? `/intermedia/${u.destino_id}` : `/final/${u.destino_id}`)}>
                         <span className="principal">
                           <strong>Lote {u.lote_destino}</strong>
-                          <span className="suave pequeno">{u.destino_tipo === "preparado" ? "Preparado" : "Producción"} · {fecha(u.fecha)}</span>
+                          <span className="suave pequeno">{u.destino_tipo === "preparado" ? "Producción intermedia" : "Producto final"} · {fecha(u.fecha)}</span>
                         </span>
                         <span className="numero">{num(u.cantidad)} {u.unidad}</span>
                       </div>

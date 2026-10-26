@@ -134,7 +134,7 @@ async function elaborados(c, f, clave) {
   const columnas = [
     { titulo: "Fecha", ancho: 1.25 }, { titulo: final ? "Producto final" : "Producción intermedia", ancho: 2.2 },
     { titulo: "Lote", ancho: 1.4 }, { titulo: "Cantidad", ancho: 0.9, alinear: "right" }, { titulo: "Ud.", ancho: 0.5, alinear: "center" },
-    ...(final ? [{ titulo: "Unidades", ancho: 0.8, alinear: "right" }] : [{ titulo: "Disponible", ancho: 1.15, alinear: "right" }]),
+    ...(final ? [{ titulo: "Uds.", ancho: 0.8, alinear: "right" }] : [{ titulo: "Disponible", ancho: 1.15, alinear: "right" }]),
     { titulo: "Caducidad", ancho: 1.25 }, { titulo: "Ingredientes (producto · lote · cantidad)", ancho: 4.2 },
     { titulo: "Cocción", ancho: 1.1 }, { titulo: "Abatimiento", ancho: 1.7 }, { titulo: "Control térmico", ancho: 1.1 },
     { titulo: "Medida correctora", ancho: 1.6 }, { titulo: "Responsable", ancho: 1.2 },

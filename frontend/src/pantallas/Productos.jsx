@@ -1,48 +1,76 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Plus, Search, ChevronRight, FileText } from "lucide-react";
+import { Plus, ChevronRight, FileText } from "lucide-react";
 import { api } from "../api.js";
-import { Aviso, Cargando, Hoja, Opciones, useSesion, euros } from "../componentes/ui.jsx";
+import { Aviso, Cargando, Hoja, Opciones, useSesion, euros, fecha } from "../componentes/ui.jsx";
 import { normal } from "../componentes/Autocompletar.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
+import Filtros, { filtrosVacios } from "../componentes/Filtros.jsx";
+import Tabla from "../componentes/Tabla.jsx";
+import useEscritorio from "../hooks/useEscritorio.js";
+
+const CONSERVACION = { ambiente: "Ambiente", refrigerado: "Refrigerado", congelado: "Congelado" };
+const ir = (p) => (window.location.hash = `/productos/${p.id}`);
+
+const COLUMNAS = [
+  { titulo: "Producto", ajustar: true, celda: (p) => <strong>{p.nombre}</strong> },
+  { titulo: "Marcas", ajustar: true, celda: (p) => (p.marcas.length ? p.marcas.map((m) => m.nombre).join(", ") : <span className="suave">Sin marcas</span>) },
+  { titulo: "Categoría", ajustar: true, celda: (p) => p.categoria || "—" },
+  { titulo: "Ud.", celda: (p) => p.unidad_medida, ancho: 60 },
+  { titulo: "Conservación", celda: (p) => CONSERVACION[p.conservacion] || "—" },
+  { titulo: "Último precio", num: true, celda: (p) => (p.ultimo_precio != null ? `${euros(p.ultimo_precio)}/${p.unidad_medida}` : "—") },
+  { titulo: "Fichas", num: true, celda: (p) => { const n = p.marcas.filter((m) => m.tiene_ficha).length; return n ? <span className="fila" style={{ justifyContent: "flex-end", gap: 4 }}><FileText size={16} aria-hidden />{n}</span> : "—"; } },
+  { titulo: "Alta", celda: (p) => fecha(p.creado_en) },
+  { titulo: "Estado", celda: (p) => (p.activo ? <span className="distintivo verde">Activo</span> : <span className="distintivo">De baja</span>) },
+];
 
 /** Productos: todos los ingredientes y materias primas que entran en el obrador. */
 export default function Productos() {
   const { puede } = useSesion();
+  const escritorio = useEscritorio();
   const [lista, setLista] = useState(null);
   const [error, setError] = useState("");
-  const [q, setQ] = useState("");
+  const [f, setF] = useState(filtrosVacios);
   const [alta, setAlta] = useState(false);
 
   useEffect(() => {
     api.get("/catalogo/productos?tipo=materia_prima").then(({ productos }) => setLista(productos)).catch((e) => setError(e.message));
   }, []);
 
+  // Lupa: primero los que empiezan por lo escrito, luego los que lo contienen (también en la marca).
   const filtrados = useMemo(() => {
     if (!lista) return [];
-    const n = normal(q);
-    return n ? lista.filter((p) => normal(p.nombre).includes(n) || p.marcas.some((m) => normal(m.nombre).includes(n))) : lista;
-  }, [lista, q]);
+    const n = normal(f.q.trim());
+    const dia = (iso) => (iso ? String(iso).slice(0, 10) : "");
+    let r = lista.filter((p) => (!f.desde || dia(p.creado_en) >= f.desde) && (!f.hasta || dia(p.creado_en) <= f.hasta));
+    if (n) {
+      const empieza = r.filter((p) => normal(p.nombre).startsWith(n));
+      const contiene = r.filter((p) => !normal(p.nombre).startsWith(n) && (normal(p.nombre).includes(n) || p.marcas.some((m) => normal(m.nombre).includes(n))));
+      r = [...empieza, ...contiene];
+    }
+    return r;
+  }, [lista, f]);
+
+  const filtrando = f.q || f.desde || f.hasta;
 
   return (
     <>
       <Cabecera titulo="Productos" />
-      <main className="contenido">
-        <div className="buscador">
-          <Search size={20} aria-hidden />
-          <input className="entrada" type="search" placeholder="Producto o marca" aria-label="Buscar productos" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+      <main className="contenido ancho">
+        <Filtros f={f} setF={setF} placeholder="Producto (primeras letras) o marca" informe="productos" etiquetaFechas="Alta" />
         {error && <Aviso tipo="error">{error}</Aviso>}
         {!lista && !error && <Cargando />}
         {lista && filtrados.length === 0 && (
-          <div className="vacio panel"><p>{q ? `Nada coincide con «${q}».` : "Aún no hay productos. Añade los ingredientes que compras habitualmente."}</p></div>
+          <div className="vacio panel"><p>{filtrando ? "Nada coincide con los filtros." : "Aún no hay productos. Añade los ingredientes que compras habitualmente."}</p></div>
         )}
-        {filtrados.length > 0 && (
+        {filtrados.length > 0 && <p className="suave pequeno">{filtrados.length} {filtrados.length === 1 ? "producto" : "productos"}</p>}
+        {filtrados.length > 0 && escritorio && <Tabla columnas={COLUMNAS} filas={filtrados} onFila={ir} etiqueta="Productos" />}
+        {filtrados.length > 0 && !escritorio && (
           <ul className="lista">
             {filtrados.map((p) => {
               const fichas = p.marcas.filter((m) => m.tiene_ficha).length;
               return (
                 <li key={p.id}>
-                  <button className="item" onClick={() => (window.location.hash = `/productos/${p.id}`)}>
+                  <button className="item" onClick={() => ir(p)}>
                     <span className="principal">
                       <strong>{p.nombre}</strong>
                       <span className="suave pequeno">

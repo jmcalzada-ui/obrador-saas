@@ -5,39 +5,41 @@ import { Aviso, Campo, Cargando, Hoja, useSesion, useToast, num, fecha, aNumero 
 import ControlTermico, { aISO, horaAhora, evaluar } from "../componentes/ControlTermico.jsx";
 import EstadoTermico from "../componentes/EstadoTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
+import { ELABORACION, rutaLote } from "../componentes/elaboracion.js";
 
 const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "");
 const horaInput = (iso) => (iso ? new Date(iso).toTimeString().slice(0, 5) : "");
 const txt = (v) => (v == null ? "" : String(v).replace(".", ","));
 
-export default function PreparadoDetalle({ id }) {
+export default function PreparadoDetalle({ id, tipo = "intermedia" }) {
+  const cfg = ELABORACION[tipo];
   const { puede } = useSesion();
   const toast = useToast();
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
   const [hoja, setHoja] = useState(null); // abatimiento | editar | borrar
 
-  const cargar = () => api.get(`/preparados/${id}`).then(setDatos).catch((e) => setError(e.message));
+  const cargar = () => api.get(`${cfg.api}/${id}`).then(setDatos).catch((e) => setError(e.message));
   useEffect(() => { cargar(); }, [id]);
 
-  const p = datos?.preparado;
+  const p = datos?.[cfg.uno];
   const t = p?.control_termico;
 
   async function cambiarActivo() {
     try {
-      await api.patch(`/preparados/${id}`, { activo: !p.activo });
+      await api.patch(`${cfg.api}/${id}`, { activo: !p.activo });
       toast(p.activo ? "Lote dado de baja" : "Lote dado de alta");
       cargar();
     } catch (e) { setError(e.message); }
   }
   async function borrar() {
-    try { await api.delete(`/preparados/${id}`); toast("Preparado eliminado"); window.location.hash = "/preparados"; }
+    try { await api.delete(`${cfg.api}/${id}`); toast("Lote eliminado"); window.location.hash = cfg.ruta; }
     catch (e) { setHoja(null); setError(e.status === 409 ? "Este lote ya se ha usado como ingrediente: no se puede eliminar. Puedes darlo de baja." : e.message); }
   }
 
   return (
     <>
-      <Cabecera titulo="Preparado" volver="/preparados"
+      <Cabecera titulo={cfg.detalleTitulo} volver={cfg.ruta}
         accion={p && puede("editar") && <button className="boton-icono" aria-label="Editar" onClick={() => setHoja("editar")}><Pencil size={22} /></button>} />
       <main className="contenido">
         {error && <Aviso tipo="error">{error}</Aviso>}
@@ -50,8 +52,8 @@ export default function PreparadoDetalle({ id }) {
                 <div className="lote">{p.num_lote}</div>
               </div>
               <div className="cantidad">
-                <strong>{num(p.disponible)}</strong> <span className="suave">{p.unidad}</span>
-                <div className="pequeno suave">de {num(p.cantidad)}</div>
+                <strong>{num(cfg.conStock ? p.disponible : p.cantidad)}</strong> <span className="suave">{p.unidad}</span>
+                <div className="pequeno suave">{cfg.conStock ? `de ${num(p.cantidad)}` : p.unidades != null ? `${num(p.unidades)} uds.` : "elaborado"}</div>
               </div>
               <div className="meta"><EstadoTermico control={t} />{!p.activo && <span className="distintivo">De baja</span>}</div>
             </div>
@@ -95,11 +97,11 @@ export default function PreparadoDetalle({ id }) {
                 {datos.ingredientes.map((i) => (
                   <li key={i.id}>
                     <button className="item" disabled={i.origen === "manual"}
-                      onClick={() => i.lote_id && (window.location.hash = i.origen === "recepcion" ? `/entradas/${i.lote_id}` : `/preparados/${i.lote_id}`)}>
+                      onClick={() => i.lote_id && (window.location.hash = rutaLote(i.origen, i.lote_id))}>
                       <span className="principal">
                         <strong>{i.producto}</strong>
                         <span className="suave pequeno">
-                          Lote {i.num_lote || "sin nº"}{i.marca ? ` · ${i.marca}` : ""}{i.origen === "manual" ? " · anotado a mano" : i.origen === "preparado" ? " · preparado propio" : ""}
+                          Lote {i.num_lote || "sin nº"}{i.marca ? ` · ${i.marca}` : ""}{i.origen === "manual" ? " · anotado a mano" : i.origen === "preparado" ? " · producción intermedia" : ""}
                         </span>
                       </span>
                       <span className="numero">{num(i.cantidad)} {i.unidad}</span>
@@ -110,13 +112,13 @@ export default function PreparadoDetalle({ id }) {
               </ul>
             </section>
 
-            <section className="seccion">
+            {cfg.conStock && <section className="seccion">
               <h2>Dónde se ha usado</h2>
               {datos.usos.length === 0 ? <p className="suave">Este lote todavía no se ha usado.</p> : (
                 <ul className="lista">
                   {datos.usos.map((u, k) => (
                     <li key={k}>
-                      <button className="item" onClick={() => u.destino_tipo === "preparado" && (window.location.hash = `/preparados/${u.destino_id}`)}>
+                      <button className="item" onClick={() => (window.location.hash = rutaLote(u.destino_tipo, u.destino_id))}>
                         <span className="principal"><strong>{u.producto_destino} · lote {u.lote_destino}</strong><span className="suave pequeno">{fecha(u.fecha)}</span></span>
                         <span className="numero">{num(u.cantidad)} {u.unidad}</span>
                       </button>
@@ -124,7 +126,7 @@ export default function PreparadoDetalle({ id }) {
                   ))}
                 </ul>
               )}
-            </section>
+            </section>}
 
             {(puede("editar") || puede("borrar")) && (
               <div className="pila">
@@ -133,17 +135,17 @@ export default function PreparadoDetalle({ id }) {
                     {p.activo ? <><PackageX size={20} aria-hidden /> Dar de baja el lote</> : <><PackageCheck size={20} aria-hidden /> Volver a dar de alta</>}
                   </button>
                 )}
-                {puede("borrar") && <button className="boton peligro bloque" onClick={() => setHoja("borrar")}><Trash2 size={20} aria-hidden /> Eliminar preparado</button>}
+                {puede("borrar") && <button className="boton peligro bloque" onClick={() => setHoja("borrar")}><Trash2 size={20} aria-hidden /> Eliminar lote</button>}
               </div>
             )}
           </>
         )}
       </main>
 
-      {hoja === "abatimiento" && <CompletarAbatimiento p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Abatimiento registrado"); cargar(); }} />}
-      {hoja === "editar" && <EditarPreparado p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Cambios guardados"); cargar(); }} />}
+      {hoja === "abatimiento" && <CompletarAbatimiento cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Abatimiento registrado"); cargar(); }} />}
+      {hoja === "editar" && <EditarPreparado cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Cambios guardados"); cargar(); }} />}
       {hoja === "borrar" && (
-        <Hoja titulo="¿Eliminar este preparado?" onCerrar={() => setHoja(null)}>
+        <Hoja titulo="¿Eliminar este lote?" onCerrar={() => setHoja(null)}>
           <p>Se borrará el lote {p.num_lote} y se devolverá al stock lo que consumió.</p>
           <button className="boton peligro grande bloque" onClick={borrar}><Trash2 size={20} aria-hidden /> Eliminar</button>
           <button className="boton bloque" onClick={() => setHoja(null)}>Cancelar</button>
@@ -153,7 +155,7 @@ export default function PreparadoDetalle({ id }) {
   );
 }
 
-function CompletarAbatimiento({ p, onCerrar, onHecho }) {
+function CompletarAbatimiento({ cfg, p, onCerrar, onHecho }) {
   const fechaBase = (p.abat_hora_inicio || `${p.fecha}T12:00:00`).slice(0, 10);
   const [v, setV] = useState({
     coccion_temp: txt(p.coccion_temp), abat_temp_inicio: txt(p.abat_temp_inicio),
@@ -169,7 +171,7 @@ function CompletarAbatimiento({ p, onCerrar, onHecho }) {
     let finIso = aISO(fechaBase, v.abat_hora_fin);
     if (new Date(finIso) < new Date(ini)) finIso = new Date(new Date(finIso).getTime() + 86400000).toISOString();
     try {
-      await api.post(`/preparados/${p.id}/abatimiento`, {
+      await api.post(`${cfg.api}/${p.id}/abatimiento`, {
         abat_temp_fin: fin, abat_hora_fin: finIso, abat_temp_inicio: aNumero(v.abat_temp_inicio), abat_hora_inicio: ini,
         medida_correctora: v.medida_correctora.trim() || undefined,
       });
@@ -185,9 +187,9 @@ function CompletarAbatimiento({ p, onCerrar, onHecho }) {
   );
 }
 
-function EditarPreparado({ p, onCerrar, onHecho }) {
+function EditarPreparado({ cfg, p, onCerrar, onHecho }) {
   const fechaBase = p.fecha;
-  const [f, setF] = useState({ num_lote: p.num_lote, cantidad: txt(p.cantidad), caducidad: p.caducidad || "", responsable: p.responsable || "", observaciones: p.observaciones || "" });
+  const [f, setF] = useState({ num_lote: p.num_lote, cantidad: txt(p.cantidad), caducidad: p.caducidad || "", responsable: p.responsable || "", observaciones: p.observaciones || "", unidades: p.unidades != null ? String(p.unidades) : "" });
   const [v, setV] = useState({
     coccion_temp: txt(p.coccion_temp), coccion_minutos: txt(p.coccion_minutos), abat_temp_inicio: txt(p.abat_temp_inicio),
     abat_hora_inicio: horaInput(p.abat_hora_inicio), abat_temp_fin: txt(p.abat_temp_fin), abat_hora_fin: horaInput(p.abat_hora_fin),
@@ -197,6 +199,10 @@ function EditarPreparado({ p, onCerrar, onHecho }) {
   async function guardar() {
     const cuerpo = { num_lote: f.num_lote.trim(), cantidad: aNumero(f.cantidad), caducidad: f.caducidad || null, responsable: f.responsable.trim(), observaciones: f.observaciones.trim() };
     if (!(cuerpo.cantidad > 0)) return setError("Indica una cantidad mayor que 0.");
+    if (cfg.conUnidades) {
+      cuerpo.unidades = f.unidades.trim() ? aNumero(f.unidades) : null;
+      if (cuerpo.unidades != null && !Number.isInteger(cuerpo.unidades)) return setError("Las unidades deben ser un número entero.");
+    }
     if (p.proceso_termico) {
       const fb = (p.abat_hora_inicio || `${fechaBase}T12:00:00`).slice(0, 10);
       const ini = aISO(fb, v.abat_hora_inicio);
@@ -208,12 +214,13 @@ function EditarPreparado({ p, onCerrar, onHecho }) {
       });
       if (Object.values(cuerpo).some((x) => Number.isNaN(x))) return setError("Revisa los valores numéricos.");
     }
-    try { await api.patch(`/preparados/${p.id}`, cuerpo); onHecho(); } catch (e) { setError(e.message); }
+    try { await api.patch(`${cfg.api}/${p.id}`, cuerpo); onHecho(); } catch (e) { setError(e.message); }
   }
   return (
-    <Hoja titulo="Editar preparado" onCerrar={onCerrar}>
+    <Hoja titulo="Editar lote" onCerrar={onCerrar}>
       <Campo etiqueta="Nº de lote" id="ep-lote"><input id="ep-lote" className="entrada grande" value={f.num_lote} onChange={(e) => setF({ ...f, num_lote: e.target.value })} /></Campo>
       <Campo etiqueta={`Cantidad obtenida (${p.unidad})`} id="ep-cant"><input id="ep-cant" className="entrada" inputMode="decimal" value={f.cantidad} onChange={(e) => setF({ ...f, cantidad: e.target.value })} /></Campo>
+      {cfg.conUnidades && <Campo etiqueta="Unidades o raciones" id="ep-uds"><input id="ep-uds" className="entrada" inputMode="numeric" value={f.unidades} onChange={(e) => setF({ ...f, unidades: e.target.value })} /></Campo>}
       <Campo etiqueta="Caducidad" id="ep-cad"><input id="ep-cad" className="entrada" type="date" value={f.caducidad} onChange={(e) => setF({ ...f, caducidad: e.target.value })} /></Campo>
       <Campo etiqueta="Responsable" id="ep-resp"><input id="ep-resp" className="entrada" value={f.responsable} onChange={(e) => setF({ ...f, responsable: e.target.value })} /></Campo>
       {p.proceso_termico && <ControlTermico obj={p} v={v} fecha={fechaBase} cambiar={(x) => setV((y) => ({ ...y, ...x }))} />}

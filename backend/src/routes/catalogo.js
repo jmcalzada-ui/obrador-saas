@@ -25,7 +25,7 @@ catalogoRouter.get(
       const { rows } = await c.query(
         `SELECT p.id, p.nombre, p.tipo, p.unidad_medida, p.alergenos, p.categoria, p.conservacion, p.activo,
                 p.proceso_termico, p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max,
-                p.vida_util_dias, p.ingredientes_habituales,
+                p.vida_util_dias, p.ingredientes_habituales, p.creado_en,
                 (SELECT round(r.precio_total / r.cantidad, 4) FROM recepciones r
                   WHERE r.producto_id = p.id AND r.precio_total IS NOT NULL ORDER BY r.fecha DESC, r.creado_en DESC LIMIT 1) AS ultimo_precio,
                 COALESCE((

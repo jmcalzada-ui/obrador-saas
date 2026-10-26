@@ -28,8 +28,8 @@ export default function ProductoDetalle({ id }) {
     }).catch((e) => setError(e.message));
   useEffect(() => { cargar(); }, [id]);
 
-  const esPreparado = producto?.tipo === "preparado";
-  const volver = esPreparado ? "/preparados" : "/productos";
+  const esPreparado = producto?.tipo === "preparado" || producto?.tipo === "elaborado";
+  const volver = producto?.tipo === "preparado" ? "/intermedia" : producto?.tipo === "elaborado" ? "/final" : "/productos";
 
   return (
     <>

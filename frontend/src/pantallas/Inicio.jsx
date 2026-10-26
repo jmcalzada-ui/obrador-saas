@@ -21,8 +21,11 @@ export default function Inicio() {
       .get("/recepciones?con_stock=1&limite=500")
       .then(({ recepciones }) => setDatos(recepciones))
       .catch((e) => setError(e.message));
-    api.get("/preparados?limite=100")
-      .then(({ preparados }) => setPendientes(preparados.filter((p) => p.control_termico?.estado === "pendiente")))
+    Promise.all([api.get("/preparados?limite=100"), api.get("/producciones?limite=100")])
+      .then(([a, b]) => setPendientes([
+        ...a.preparados.map((p) => ({ ...p, ruta: `/intermedia/${p.id}` })),
+        ...b.producciones.map((p) => ({ ...p, ruta: `/final/${p.id}` })),
+      ].filter((p) => p.control_termico?.estado === "pendiente")))
       .catch(() => {});
   }, []);
 
@@ -60,8 +63,8 @@ export default function Inicio() {
                 <h2>Abatimientos por completar</h2>
                 <ul className="lista">
                   {pendientes.map((p) => (
-                    <li key={p.id}>
-                      <button className="item" onClick={() => (window.location.hash = `/preparados/${p.id}`)}>
+                    <li key={p.ruta}>
+                      <button className="item" onClick={() => (window.location.hash = p.ruta)}>
                         <span className="principal"><strong>{p.producto}</strong><span className="suave pequeno">Lote {p.num_lote}</span></span>
                         <span className="distintivo ambar">Pendiente</span>
                       </button>

@@ -5,6 +5,7 @@ import { Aviso, Campo, Cargando, Opciones, useSesion, useToast, hoyISO, aNumero,
 import Autocompletar from "../componentes/Autocompletar.jsx";
 import ControlTermico, { aISO, horaAhora, evaluar } from "../componentes/ControlTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
+import { ELABORACION } from "../componentes/elaboracion.js";
 
 const OBJETIVOS = { coccion_temp_min: 75, abatimiento_temp_max: 10, abatimiento_minutos_max: 120 };
 let siguienteId = 1;
@@ -18,7 +19,8 @@ function finISO(fecha, ini, fin) {
   return new Date(f) < new Date(i) ? new Date(new Date(f).getTime() + 86400000).toISOString() : f;
 }
 
-export default function NuevoPreparado() {
+export default function NuevoPreparado({ tipo = "intermedia" }) {
+  const cfg = ELABORACION[tipo];
   const { usuario } = useSesion();
   const toast = useToast();
   const [paso, setPaso] = useState("preparado");
@@ -30,7 +32,7 @@ export default function NuevoPreparado() {
   const [elegido, setElegido] = useState(null); // preparado guardado
   const [nuevo, setNuevo] = useState(null); // { nombre, unidad_medida, proceso_termico, vida_util_dias, conservacion }
   const [filas, setFilas] = useState([filaVacia()]);
-  const [lote, setLote] = useState({ num_lote: "", cantidad: "", fecha: hoyISO(), caducidad: "", responsable: usuario.nombre, observaciones: "" });
+  const [lote, setLote] = useState({ num_lote: "", cantidad: "", unidades: "", fecha: hoyISO(), caducidad: "", responsable: usuario.nombre, observaciones: "" });
   const [termico, setTermico] = useState({ coccion_temp: "", coccion_minutos: "", abat_temp_inicio: "", abat_hora_inicio: horaAhora(), abat_temp_fin: "", abat_hora_fin: "", medida_correctora: "" });
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function NuevoPreparado() {
   useEffect(() => {
     if (paso !== "lote" || lote.num_lote) return;
     const p = new URLSearchParams({ fecha: lote.fecha, ...(elegido ? { producto_id: elegido.id } : { nombre: nuevo?.nombre || "" }) });
-    api.get(`/preparados/siguiente-lote?${p}`).then(({ num_lote }) => setLote((x) => ({ ...x, num_lote: x.num_lote || num_lote }))).catch(() => {});
+    api.get(`${cfg.api}/siguiente-lote?${p}`).then(({ num_lote }) => setLote((x) => ({ ...x, num_lote: x.num_lote || num_lote }))).catch(() => {});
     const vida = aNumero(datos?.vida_util_dias);
     if (vida > 0 && !lote.caducidad) {
       const d = new Date(`${lote.fecha}T12:00:00`);
@@ -76,8 +78,8 @@ export default function NuevoPreparado() {
 
   function validar() {
     if (paso === "nuevo") {
-      if (!nuevo.nombre.trim()) return "Escribe el nombre del preparado.";
-      if (nuevo.proceso_termico === null) return "Indica si el preparado lleva proceso térmico.";
+      if (!nuevo.nombre.trim()) return "Escribe el nombre.";
+      if (nuevo.proceso_termico === null) return "Indica si lleva proceso térmico.";
     }
     if (paso === "ingredientes") {
       const validas = filas.filter((f) => f.producto);
@@ -92,6 +94,7 @@ export default function NuevoPreparado() {
     if (paso === "lote") {
       if (!lote.num_lote.trim()) return "Indica el nº de lote.";
       if (!(aNumero(lote.cantidad) > 0)) return "Indica la cantidad obtenida.";
+      if (cfg.conUnidades && lote.unidades.trim() && !Number.isInteger(aNumero(lote.unidades))) return "Las unidades deben ser un número entero.";
     }
     if (paso === "termico") {
       if (aNumero(termico.coccion_temp) == null) return "Anota la temperatura de cocción.";
@@ -122,17 +125,18 @@ export default function NuevoPreparado() {
       medida_correctora: termico.medida_correctora.trim(),
     } : {};
     try {
-      const { preparado } = await api.post("/preparados", {
+      const respuesta = await api.post(cfg.api, {
         ...(elegido ? { producto_id: elegido.id } : { nuevo: { ...nuevo, nombre: nuevo.nombre.trim(), vida_util_dias: aNumero(nuevo.vida_util_dias) } }),
         fecha: lote.fecha, num_lote: lote.num_lote.trim(), cantidad: aNumero(lote.cantidad), caducidad: lote.caducidad || null,
         responsable: lote.responsable.trim(), observaciones: lote.observaciones.trim(),
+        ...(cfg.conUnidades ? { unidades: lote.unidades.trim() ? aNumero(lote.unidades) : null } : {}),
         ingredientes: filas.filter((f) => f.producto).map((f) => f.manual
           ? { origen: "manual", producto_id: f.producto.id, num_lote: f.num_lote.trim(), cantidad: aNumero(f.cantidad) }
           : { origen: f.lote.origen, lote_id: f.lote.id, cantidad: aNumero(f.cantidad) }),
         ...t,
       });
-      toast("Preparado registrado");
-      window.location.hash = `/preparados/${preparado.id}`;
+      toast(cfg.guardado);
+      window.location.hash = `${cfg.ruta}/${respuesta[cfg.uno].id}`;
     } catch (e) {
       setError(e.message);
       setGuardando(false);
@@ -142,17 +146,17 @@ export default function NuevoPreparado() {
   if (!catalogo) {
     return (
       <>
-        <Cabecera titulo="Nuevo preparado" volver="/preparados" />
+        <Cabecera titulo={cfg.nuevoTitulo} volver={cfg.ruta} />
         <main className="contenido">{error ? <Aviso tipo="error">{error}</Aviso> : <Cargando />}</main>
       </>
     );
   }
 
-  const titulos = { preparado: "¿Qué vas a preparar?", nuevo: "Preparado nuevo", ingredientes: "Ingredientes", lote: "Lote obtenido", termico: "Control térmico", revisar: "Revisar" };
+  const titulos = { preparado: cfg.pregunta, nuevo: `Nuevo: ${cfg.singular}`, ingredientes: "Ingredientes", lote: "Lote obtenido", termico: "Control térmico", revisar: "Revisar" };
 
   return (
     <>
-      <Cabecera titulo="Nuevo preparado" volver={paso === "preparado" ? "/preparados" : undefined} />
+      <Cabecera titulo={cfg.nuevoTitulo} volver={paso === "preparado" ? cfg.ruta : undefined} />
       <main className="contenido">
         <div className="pasos" aria-hidden>{pasos.map((p, i) => <span key={p} className={i <= indice ? "hecho" : ""} />)}</div>
         <div className="paso-titulo">
@@ -162,18 +166,18 @@ export default function NuevoPreparado() {
         </div>
 
         {paso === "preparado" && (
-          <PasoPreparado catalogo={catalogo} onElegir={elegirGuardado}
+          <PasoPreparado cfg={cfg} catalogo={catalogo} onElegir={elegirGuardado}
             onCrear={(nombre) => { setElegido(null); setNuevo({ nombre, unidad_medida: "kg", proceso_termico: null, vida_util_dias: "", conservacion: "refrigerado" }); setFilas([filaVacia()]); irA("nuevo"); }} />
         )}
         {paso === "nuevo" && <PasoNuevo nuevo={nuevo} setNuevo={setNuevo} />}
         {paso === "ingredientes" && (
-          <PasoIngredientes filas={filas} setFilas={setFilas} catalogo={catalogo.filter((c) => c.id !== elegido?.id)} lotes={lotes} conLotePorDefecto={conLotePorDefecto} />
+          <PasoIngredientes filas={filas} setFilas={setFilas} catalogo={catalogo.filter((c) => c.id !== elegido?.id && c.tipo !== "elaborado")} lotes={lotes} conLotePorDefecto={conLotePorDefecto} />
         )}
-        {paso === "lote" && <PasoLote lote={lote} setLote={setLote} unidad={unidad} />}
+        {paso === "lote" && <PasoLote cfg={cfg} lote={lote} setLote={setLote} unidad={unidad} />}
         {paso === "termico" && (
           <ControlTermico obj={obj} v={termico} fecha={lote.fecha} cambiar={(p) => setTermico((x) => ({ ...x, ...p }))} />
         )}
-        {paso === "revisar" && <PasoRevisar datos={datos} filas={filas} lote={lote} unidad={unidad} termico={conTermico ? termico : null} obj={obj} irA={irA} />}
+        {paso === "revisar" && <PasoRevisar cfg={cfg} datos={datos} filas={filas} lote={lote} unidad={unidad} termico={conTermico ? termico : null} obj={obj} irA={irA} />}
 
         {error && <Aviso tipo="error">{error}</Aviso>}
       </main>
@@ -186,7 +190,7 @@ export default function NuevoPreparado() {
               <button className="boton principal grande" style={{ flex: 1 }} onClick={siguiente}>Siguiente <ChevronRight size={22} aria-hidden /></button>
             ) : (
               <button className="boton principal grande" style={{ flex: 1 }} onClick={guardar} disabled={guardando}>
-                <Check size={22} aria-hidden /> {guardando ? "Guardando…" : "Guardar preparado"}
+                <Check size={22} aria-hidden /> {guardando ? "Guardando…" : "Guardar lote"}
               </button>
             )}
           </div>
@@ -196,9 +200,9 @@ export default function NuevoPreparado() {
   );
 }
 
-function PasoPreparado({ catalogo, onElegir, onCrear }) {
+function PasoPreparado({ cfg, catalogo, onElegir, onCrear }) {
   const [q, setQ] = useState("");
-  const guardados = catalogo.filter((p) => p.tipo === "preparado");
+  const guardados = catalogo.filter((p) => p.tipo === cfg.tipoProducto);
   return (
     <div className="pila">
       <Autocompletar
@@ -207,13 +211,13 @@ function PasoPreparado({ catalogo, onElegir, onCrear }) {
         opciones={guardados.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.proceso_termico ? "Con proceso térmico" : "Sin proceso térmico", p }))}
         onElegir={(o) => onElegir(o.p)}
         onCrear={onCrear}
-        textoCrear={(t) => `Crear el preparado «${t}»`}
-        placeholder="Nombre del preparado, p. ej. Bechamel"
+        textoCrear={cfg.crear}
+        placeholder={cfg.placeholder}
         autoFocus
         mostrarTodasVacio
         maxSugerencias={12}
       />
-      {guardados.length === 0 && <p className="suave">Es tu primer preparado. Escribe su nombre: quedará guardado para las próximas veces.</p>}
+      {guardados.length === 0 && <p className="suave">{cfg.primera}</p>}
     </div>
   );
 }
@@ -222,7 +226,7 @@ function PasoNuevo({ nuevo, setNuevo }) {
   const c = (p) => setNuevo((x) => ({ ...x, ...p }));
   return (
     <div className="pila">
-      <Campo etiqueta="Nombre del preparado" id="pn-nombre">
+      <Campo etiqueta="Nombre" id="pn-nombre">
         <input id="pn-nombre" className="entrada" value={nuevo.nombre} onChange={(e) => c({ nombre: e.target.value })} />
       </Campo>
       <div className="campo">
@@ -249,7 +253,7 @@ function PasoNuevo({ nuevo, setNuevo }) {
 
 function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto }) {
   const cambiarFila = (k, p) => setFilas((l) => l.map((f) => (f.k === k ? { ...f, ...p } : f)));
-  const opciones = useMemo(() => catalogo.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.tipo === "preparado" ? "Preparado propio" : p.unidad_medida, p })), [catalogo]);
+  const opciones = useMemo(() => catalogo.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.tipo === "preparado" ? "Producción intermedia" : p.unidad_medida, p })), [catalogo]);
 
   return (
     <div className="pila">
@@ -304,7 +308,7 @@ function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto 
   );
 }
 
-function PasoLote({ lote, setLote, unidad }) {
+function PasoLote({ cfg, lote, setLote, unidad }) {
   const c = (p) => setLote((x) => ({ ...x, ...p }));
   return (
     <div className="pila">
@@ -314,6 +318,11 @@ function PasoLote({ lote, setLote, unidad }) {
       <Campo etiqueta={`Cantidad obtenida (${unidad})`} id="pl-cant">
         <input id="pl-cant" className="entrada grande" inputMode="decimal" value={lote.cantidad} onChange={(e) => c({ cantidad: e.target.value })} />
       </Campo>
+      {cfg.conUnidades && unidad !== "ud" && (
+        <Campo etiqueta="Unidades o raciones (opcional)" id="pl-uds" ayuda="Piezas, bandejas o raciones que salen del lote.">
+          <input id="pl-uds" className="entrada" inputMode="numeric" value={lote.unidades} onChange={(e) => c({ unidades: e.target.value })} />
+        </Campo>
+      )}
       <div className="dos-columnas">
         <Campo etiqueta="Fecha" id="pl-fecha">
           <input id="pl-fecha" className="entrada" type="date" max={hoyISO()} value={lote.fecha} onChange={(e) => c({ fecha: e.target.value })} />
@@ -332,14 +341,14 @@ function PasoLote({ lote, setLote, unidad }) {
   );
 }
 
-function PasoRevisar({ datos, filas, lote, unidad, termico, obj, irA }) {
+function PasoRevisar({ cfg, datos, filas, lote, unidad, termico, obj, irA }) {
   const r = termico ? evaluar(obj, termico, lote.fecha) : null;
   return (
     <div className="pila">
       <dl className="ficha panel">
-        <dt>Preparado</dt><dd>{datos.nombre}</dd>
+        <dt>{cfg.corto === "Final" ? "Producto final" : "Elaboración"}</dt><dd>{datos.nombre}</dd>
         <dt>Lote</dt><dd>{lote.num_lote}</dd>
-        <dt>Obtenido</dt><dd>{num(aNumero(lote.cantidad))} {unidad}</dd>
+        <dt>Obtenido</dt><dd>{num(aNumero(lote.cantidad))} {unidad}{cfg.conUnidades && lote.unidades ? ` · ${lote.unidades} uds.` : ""}</dd>
         <dt>Fecha</dt><dd>{fecha(lote.fecha)}</dd>
         <dt>Caducidad</dt><dd>{fecha(lote.caducidad)}</dd>
         <dt>Responsable</dt><dd>{lote.responsable || "—"}</dd>
