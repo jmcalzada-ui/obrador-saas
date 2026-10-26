@@ -12,7 +12,9 @@ export const config = {
   produccion,
   port: Number(process.env.PORT) || 3000,
   databaseUrl: requerida("DATABASE_URL", "postgres://dev:dev@localhost:5432/obrador_dev"),
-  jwtSecret: requerida("JWT_SECRET", "solo-para-desarrollo-local-no-usar-en-produccion"),
+  // En producción, si no se define JWT_SECRET, el servidor genera una clave
+  // aleatoria al primer arranque y la guarda en la base (ver server.js).
+  jwtSecret: process.env.JWT_SECRET || (produccion ? null : "solo-para-desarrollo-local-no-usar-en-produccion"),
   jwtExpira: process.env.JWT_EXPIRA || "12h",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || null,
 
