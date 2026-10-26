@@ -154,7 +154,7 @@ function Clientes() {
                     <td><Led led={c.led} /></td>
                     <td><strong>{c.nombre}</strong><div className="suave pequeno">{c.razon_social || "—"} · {c.municipio || "—"}</div></td>
                     <td>{fecha(c.fecha_alta)}</td>
-                    <td>Básico{c.usuarios_extra ? ` +${c.usuarios_extra} us.` : ""} · {c.periodicidad === "anual" ? "anual" : "mensual"}<div className="suave pequeno">{c.importe_periodo != null ? `${euros(c.importe_periodo)}/${c.periodicidad === "anual" ? "año" : "mes"}` : "—"}</div></td>
+                    <td>{c.plan === "completo" ? "Completo" : "Básico"}{c.usuarios_extra ? ` +${c.usuarios_extra} us.` : ""} · {c.periodicidad === "anual" ? "anual" : "mensual"}<div className="suave pequeno">{c.importe_periodo != null ? `${euros(c.importe_periodo)}/${c.periodicidad === "anual" ? "año" : "mes"}` : "—"}</div></td>
                     <td>{c.led === "rojo" ? <span style={{ color: "var(--rojo)", fontWeight: 700 }}>Impago desde {fecha(c.impago_desde)}</span> : fecha(c.proximo_cobro)}</td>
                     <td className="num">{euros(c.pagado_12m)}</td>
                     <td className="num">{euros(c.pagado_total)}</td>
@@ -224,9 +224,9 @@ function Cliente({ id }) {
           <dl className="ficha">
             {dato("Alta", fecha(o.creado_en))}
             {dato("Contratado", fecha(s.contratado_en))}
-            {dato("Plan", `Básico${s.usuarios_extra ? ` + ${s.usuarios_extra} usuario(s) extra` : ""}`)}
+            {dato("Plan", `${s.plan === "completo" ? "Completo" : "Básico"}${s.usuarios_extra ? ` + ${s.usuarios_extra} usuario(s) extra` : ""}`)}
             {dato("Módulos", s.modulos.length ? s.modulos.join(", ") : "Ninguno")}
-            {dato("Pago", s.periodicidad === "anual" ? "Anual (20 % dto.)" : "Mensual")}
+            {dato("Pago", s.periodicidad === "anual" ? `Anual (${s.plan === "completo" ? 3 : 2} meses gratis)` : "Mensual")}
             {dato("Cuota", s.importe_periodo != null ? `${euros(s.importe_periodo)} / ${s.periodicidad === "anual" ? "año" : "mes"} sin impuestos${s.periodicidad === "anual" ? ` (${euros(s.importe_mensual)}/mes)` : ""}` : null)}
             {s.activado_por_mandato && dato("Activación", "Al aceptar la domiciliación")}
             {dato("Usuarios", `${r.usuarios_activos} de ${s.usuarios_incluidos + s.usuarios_extra}`)}

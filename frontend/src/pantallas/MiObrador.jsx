@@ -72,8 +72,8 @@ export default function MiObrador() {
                   <Aviso tipo="error">El último cobro ha fallado. Actualiza la forma de pago antes del {fecha(sesionObrador.fecha_suspension)}.</Aviso>
                 )}
                 <dl className="ficha">
-                  <dt>Plan</dt><dd>Básico{s.usuarios_extra ? ` + ${s.usuarios_extra} usuario(s) extra` : ""}</dd>
-                  <dt>Cuota</dt><dd>{s.importe_periodo != null ? `${euros(s.importe_periodo)} / ${s.periodicidad === "anual" ? "año (20 % dto.)" : "mes"} sin impuestos` : "—"}</dd>
+                  <dt>Plan</dt><dd>{s.plan === "completo" ? "Completo" : "Básico"}{s.usuarios_extra ? ` + ${s.usuarios_extra} usuario(s) extra` : ""}</dd>
+                  <dt>Cuota</dt><dd>{s.importe_periodo != null ? `${euros(s.importe_periodo)} / ${s.periodicidad === "anual" ? `año (${s.plan === "completo" ? 3 : 2} meses gratis)` : "mes"} sin impuestos` : "—"}</dd>
                   <dt>Estado</dt><dd>{ESTADO_SUSC[s.estado] || s.estado}</dd>
                   <dt>Próximo cobro</dt><dd>{fecha(s.proximo_cobro)}</dd>
                   <dt>Forma de pago</dt><dd>{s.metodo_pago_resumen || (s.metodo_pago_tipo === "sepa_debit" ? "Domiciliación bancaria" : s.metodo_pago_tipo === "card" ? "Tarjeta" : "—")}</dd>

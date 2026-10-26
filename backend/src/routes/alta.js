@@ -22,12 +22,16 @@ const limiteAlta = rateLimit({
 
 // Información pública del plan para la página de alta.
 altaRouter.get("/plan", (req, res) => {
+  const t = config.tarifas;
   res.json({
-    basico: config.tarifas.basico,
-    usuarioExtra: config.tarifas.usuarioExtra,
-    descuentoAnual: config.tarifas.descuentoAnual,
-    basicoAnual: calcularImporte({ periodicidad: "anual" }).periodo,
-    usuarioExtraAnual: Math.round(config.tarifas.usuarioExtra * 12 * (1 - config.tarifas.descuentoAnual) * 100) / 100,
+    basico: t.basico,
+    usuarioExtra: t.usuarioExtra,
+    basicoAnual: t.anual.basico,
+    usuarioExtraAnual: t.anual.usuarioExtra,
+    completoAnual: t.anual.completo,
+    completoMensualEquivalente: Math.round((t.basico + t.escandallos + t.appcc) * 100) / 100,
+    modulos: { escandallos: t.escandallos, appcc: t.appcc },
+    completoDisponible: config.planCompletoDisponible,
     usuariosIncluidos: 2,
     pagosSimulados: config.pagosSimulados,
   });
@@ -60,6 +64,7 @@ const esquema = z.object({
   // Contratación y pago
   usuarios_extra: z.number().int().min(0).max(50).default(0),
   periodicidad: z.enum(["mensual", "anual"]).default("mensual"),
+  plan: z.enum(["basico", "completo"]).default("basico"),
   metodo: z.enum(["card", "sepa_debit"], { errorMap: () => ({ message: "Elige tarjeta o domiciliación bancaria." }) }),
   acepta_condiciones: z.literal(true, { errorMap: () => ({ message: "Debes aceptar las condiciones del servicio." }) }),
 });
@@ -70,6 +75,10 @@ altaRouter.post(
   ruta(async (req, res) => {
     const d = validar(esquema, req.body, res);
     if (!d) return;
+    if (d.plan === "completo" && !config.planCompletoDisponible) {
+      return res.status(400).json({ error: "El plan completo estará disponible próximamente.", campo: "plan" });
+    }
+    if (d.plan === "completo") d.periodicidad = "anual"; // el plan completo solo se contrata por un año
     const existe = await comoSistema(async (c) =>
       (await c.query("SELECT 1 FROM usuarios WHERE lower(email) = lower($1)", [d.gestor_email])).rowCount > 0
     );
@@ -87,6 +96,7 @@ altaRouter.post(
       estado: "pendiente_pago",
       usuariosExtra: d.usuarios_extra,
       periodicidad: d.periodicidad,
+      plan: d.plan,
       datos: {
         razon_social: d.razon_social, cif: d.cif, registro_sanitario: d.registro_sanitario || null,
         sector: d.sector, num_empleados: d.num_empleados, direccion_fiscal: d.direccion_fiscal,
@@ -97,8 +107,8 @@ altaRouter.post(
     });
     try {
       const { url } = await crearSesionPago({ obradorId: obrador.id, metodo: d.metodo });
-      const imp = calcularImporte({ usuarios_extra: d.usuarios_extra, periodicidad: d.periodicidad });
-      res.status(201).json({ url, importe: imp.periodo, periodicidad: imp.periodicidad, importeMensual: imp.mensual });
+      const imp = calcularImporte({ plan: d.plan, usuarios_extra: d.usuarios_extra, periodicidad: d.periodicidad });
+      res.status(201).json({ url, plan: imp.plan, importe: imp.periodo, periodicidad: imp.periodicidad, importeMensual: imp.mensual, ahorro: Math.round((imp.sinDescuento - imp.periodo) * 100) / 100 });
     } catch (e) {
       // El obrador queda "pendiente de pago": el gestor puede entrar y reintentar.
       res.status(e.status || 502).json({ error: e.status ? e.message : "No se pudo abrir la página de pago. Entra con tu email para reintentarlo." });

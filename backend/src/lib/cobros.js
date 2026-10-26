@@ -15,15 +15,29 @@ export const stripeActivo = () => Boolean(stripe);
 
 const r2 = (n) => Math.round(n * 100) / 100;
 
-/** Precio por periodo (mes o año) y su equivalente mensual. Anual = 12 meses con descuento. */
-export function calcularImporte({ usuarios_extra = 0, periodicidad = "mensual" }) {
+export const MODULOS_COMPLETO = ["escandallos", "appcc_temperaturas"];
+
+/**
+ * Precio por periodo (mes o año), su equivalente mensual y lo que costaría
+ * pagando mes a mes (para mostrar el ahorro).
+ *   básico mensual   29,90 + 3 × usuarios extra
+ *   básico anual     299 (2 meses gratis) + 30 × usuarios extra
+ *   completo anual   539 (3 meses gratis) + 30 × usuarios extra — solo anual
+ */
+export function calcularImporte({ plan = "basico", usuarios_extra = 0, periodicidad = "mensual" }) {
   const t = config.tarifas;
-  const mensual = t.basico + (usuarios_extra || 0) * t.usuarioExtra;
-  if (periodicidad === "anual") {
-    const anual = r2(r2(t.basico * 12 * (1 - t.descuentoAnual)) + (usuarios_extra || 0) * r2(t.usuarioExtra * 12 * (1 - t.descuentoAnual)));
-    return { periodo: anual, mensual: r2(anual / 12), periodicidad };
+  const n = usuarios_extra || 0;
+  const mensualCompleto = t.basico + t.escandallos + t.appcc;
+  if (plan === "completo") {
+    const periodo = r2(t.anual.completo + n * t.anual.usuarioExtra);
+    return { plan, periodicidad: "anual", periodo, mensual: r2(periodo / 12), sinDescuento: r2((mensualCompleto + n * t.usuarioExtra) * 12) };
   }
-  return { periodo: r2(mensual), mensual: r2(mensual), periodicidad };
+  if (periodicidad === "anual") {
+    const periodo = r2(t.anual.basico + n * t.anual.usuarioExtra);
+    return { plan, periodicidad, periodo, mensual: r2(periodo / 12), sinDescuento: r2((t.basico + n * t.usuarioExtra) * 12) };
+  }
+  const periodo = r2(t.basico + n * t.usuarioExtra);
+  return { plan, periodicidad, periodo, mensual: periodo, sinDescuento: r2(periodo * 12) };
 }
 export const importeMensual = (s) => calcularImporte(s).mensual;
 
@@ -74,9 +88,10 @@ export async function crearSesionPago({ obradorId, metodo }) {
     await comoSistema((c) => c.query("UPDATE suscripciones SET stripe_customer_id = $2 WHERE obrador_id = $1", [obradorId, customerId]));
   }
   const anual = d.suscripcion.periodicidad === "anual";
-  const precioBase = anual ? config.stripe.precios.basicoAnual : config.stripe.precios.basico;
-  const precioExtra = anual ? config.stripe.precios.usuarioExtraAnual : config.stripe.precios.usuarioExtra;
-  if (!precioBase) throw Object.assign(new Error("El pago anual todavía no está configurado."), { status: 503 });
+  const P = config.stripe.precios;
+  const precioBase = d.suscripcion.plan === "completo" ? P.completoAnual : anual ? P.basicoAnual : P.basico;
+  const precioExtra = anual ? P.usuarioExtraAnual : P.usuarioExtra;
+  if (!precioBase) throw Object.assign(new Error("Este plan todavía no está configurado para el pago."), { status: 503 });
   const items = [{ price: precioBase, quantity: 1 }];
   if (d.suscripcion.usuarios_extra > 0 && precioExtra) items.push({ price: precioExtra, quantity: d.suscripcion.usuarios_extra });
   const sesion = await stripe.checkout.sessions.create({

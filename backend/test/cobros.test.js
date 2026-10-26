@@ -147,21 +147,45 @@ test("avisos firmados de Stripe: cobro correcto, repetido y firma falsa", async 
   config.stripe.webhookSecret = null;
 });
 
-test("pago anual con un 20 % de descuento", async () => {
+test("pago anual del plan básico: 299 € (2 meses gratis)", async () => {
   const r = await request(app).post("/api/alta").send({ ...ALTA, gestor_email: "anual@espiga.test", usuarios_extra: 2, periodicidad: "anual" });
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.periodicidad, "anual");
-  assert.equal(r.body.importe, 344.64, "287,04 + 2 × 28,80");
-  assert.equal(r.body.importeMensual, 28.72);
+  assert.equal(r.body.importe, 359, "299 + 2 × 30");
+  assert.equal(r.body.importeMensual, 29.92);
+  assert.equal(r.body.ahorro, 71.8, "frente a 12 × (29,90 + 2 × 3)");
   const { rows: [s] } = await pool.query(
     "SELECT s.*, (SELECT max(periodo_hasta) - max(periodo_desde) FROM pagos p WHERE p.obrador_id = s.obrador_id) AS periodo FROM suscripciones s JOIN usuarios u ON u.obrador_id = s.obrador_id WHERE u.email = 'anual@espiga.test'"
   );
   assert.equal(s.periodicidad, "anual");
-  assert.equal(s.importe_periodo, 344.64);
+  assert.equal(s.importe_periodo, 359);
   assert.equal(s.periodo.days, 365);
   const plan = (await request(app).get("/api/alta/plan")).body;
-  assert.equal(plan.basicoAnual, 287.04);
-  assert.equal(plan.usuarioExtraAnual, 28.8);
+  assert.equal(plan.basicoAnual, 299);
+  assert.equal(plan.usuarioExtraAnual, 30);
+  assert.equal(plan.completoAnual, 539);
+});
+
+test("plan completo anual: 539 € (3 meses gratis), con todos los módulos; oculto hasta que estén listos", async () => {
+  const datos = { ...ALTA, gestor_email: "completo@espiga.test", plan: "completo", periodicidad: "mensual", usuarios_extra: 1 };
+  const cerrado = await request(app).post("/api/alta").send(datos);
+  assert.equal(cerrado.status, 400);
+  assert.equal(cerrado.body.campo, "plan");
+  config.planCompletoDisponible = true;
+  try {
+    const r = await request(app).post("/api/alta").send(datos);
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.periodicidad, "anual", "el completo siempre es anual");
+    assert.equal(r.body.importe, 569, "539 + 30");
+    assert.equal(r.body.ahorro, 185.8, "frente a 12 × (59,90 + 3) = 754,80");
+    const { rows: [s] } = await pool.query(
+      "SELECT s.plan, s.modulos FROM suscripciones s JOIN usuarios u ON u.obrador_id = s.obrador_id WHERE u.email = 'completo@espiga.test'"
+    );
+    assert.equal(s.plan, "completo");
+    assert.deepEqual(s.modulos, ["escandallos", "appcc_temperaturas"]);
+  } finally {
+    config.planCompletoDisponible = false;
+  }
 });
 
 test("domiciliación: acceso al aceptar el mandato; si el primer cargo falla, ciclo de impago", async () => {

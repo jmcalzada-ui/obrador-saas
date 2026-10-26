@@ -26,8 +26,9 @@ export const config = {
     precios: {
       basico: process.env.STRIPE_PRECIO_BASICO || null,                     // 29,90 €/mes
       usuarioExtra: process.env.STRIPE_PRECIO_USUARIO_EXTRA || null,         // 3 €/mes por usuario
-      basicoAnual: process.env.STRIPE_PRECIO_BASICO_ANUAL || null,           // 287,04 €/año (−20 %)
-      usuarioExtraAnual: process.env.STRIPE_PRECIO_USUARIO_EXTRA_ANUAL || null, // 28,80 €/año por usuario (−20 %)
+      basicoAnual: process.env.STRIPE_PRECIO_BASICO_ANUAL || null,           // 299 €/año (2 meses gratis)
+      usuarioExtraAnual: process.env.STRIPE_PRECIO_USUARIO_EXTRA_ANUAL || null, // 30 €/año por usuario (2 meses gratis)
+      completoAnual: process.env.STRIPE_PRECIO_COMPLETO_ANUAL || null,       // 539 €/año (3 meses gratis)
     },
   },
   // Entorno de pruebas sin Stripe: el alta se activa al momento y el back
@@ -48,5 +49,12 @@ export const config = {
   },
 
   // Precios del plan (para mostrar y calcular el importe; Stripe cobra lo suyo).
-  tarifas: { basico: 29.9, usuarioExtra: 3, descuentoAnual: 0.2 },
+  // Mensual: básico 29,90 + módulos (escandallos, precios y lectura por IA 20 · APPCC temperaturas 10) + 3 por usuario extra.
+  // Anual básico: 2 meses gratis (10 cuotas). Anual completo (todos los módulos): 3 meses gratis (9 cuotas).
+  tarifas: {
+    basico: 29.9, usuarioExtra: 3, escandallos: 20, appcc: 10,
+    anual: { basico: 299, usuarioExtra: 30, completo: 539 },
+  },
+  // El plan completo se ofrece cuando los módulos estén terminados.
+  planCompletoDisponible: process.env.PLAN_COMPLETO_DISPONIBLE === "1",
 };

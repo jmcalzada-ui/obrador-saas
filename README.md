@@ -37,7 +37,9 @@ Tres puertas en la misma web:
 **Cobros**
 - Alta con tarjeta o domiciliación SEPA en la página segura de Stripe (los
   datos bancarios nunca pasan por nuestro servidor).
-- Pago mensual o anual (20 % de descuento).
+- Planes: básico mensual (29,90 €), básico anual (299 €, 2 meses gratis) y
+  completo anual con todos los módulos (539 €, 3 meses gratis; se activa
+  cuando los módulos estén terminados). Usuario extra: 3 €/mes o 30 €/año.
 - Tarjeta: cuenta activa al cobrar. Domiciliación: activa al aceptar el
   mandato. Correo con factura e información de la contratación.
 - Cobro fallido → correo inmediato; recordatorio a los 5 días avisando de
@@ -66,8 +68,10 @@ Tres puertas en la misma web:
 | `STRIPE_WEBHOOK_SECRET` | Secreto del webhook (`whsec_…`) |
 | `STRIPE_PRECIO_BASICO` | Id del precio de 29,90 €/mes (`price_…`) |
 | `STRIPE_PRECIO_USUARIO_EXTRA` | Id del precio de 3 €/mes por usuario |
-| `STRIPE_PRECIO_BASICO_ANUAL` | Id del precio de 287,04 €/año (−20 %) |
-| `STRIPE_PRECIO_USUARIO_EXTRA_ANUAL` | Id del precio de 28,80 €/año por usuario (−20 %) |
+| `STRIPE_PRECIO_BASICO_ANUAL` | Id del precio de 299 €/año (2 meses gratis) |
+| `STRIPE_PRECIO_USUARIO_EXTRA_ANUAL` | Id del precio de 30 €/año por usuario (2 meses gratis) |
+| `STRIPE_PRECIO_COMPLETO_ANUAL` | Id del precio del plan completo, 539 €/año (3 meses gratis) |
+| `PLAN_COMPLETO_DISPONIBLE` | `1` cuando los módulos estén listos para ofrecer el plan completo |
 | `RESEND_API_KEY` | Envío de correos (resend.com) |
 | `CORREO_REMITENTE` | p. ej. `Tu Servicio <hola@tuservicio.com>` |
 | `ADMIN_INICIAL_EMAIL` / `ADMIN_INICIAL_PASSWORD` / `ADMIN_INICIAL_NOMBRE` | Crea el administrador principal en el primer arranque (contraseña de 12+ caracteres) |
@@ -78,9 +82,9 @@ alta se activa al momento y el back office permite simular cobros correctos
 o fallidos). Sin `RESEND_API_KEY`, los correos se registran pero no se envían.
 
 ### Configurar Stripe
-1. Productos: «Plan básico» con dos precios recurrentes (29,90 €/mes y
-   287,04 €/año) y «Usuario extra» con otros dos (3 €/mes y 28,80 €/año).
-   Copia los cuatro ids de precio.
+1. Productos y precios recurrentes: «Plan básico» (29,90 €/mes y
+   299 €/año), «Usuario extra» (3 €/mes y 30 €/año) y «Plan completo»
+   (539 €/año). Copia los cinco ids de precio.
 2. Activa tarjeta y SEPA Direct Debit como métodos de pago.
 3. Webhook a `https://TU-DOMINIO/api/stripe/webhook` con los eventos
    `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
