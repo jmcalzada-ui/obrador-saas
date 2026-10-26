@@ -28,7 +28,9 @@ export const config = {
       usuarioExtra: process.env.STRIPE_PRECIO_USUARIO_EXTRA || null, // 3 €/mes por usuario
     },
   },
-  pagosSimulados: !produccion && !process.env.STRIPE_SECRET_KEY,
+  // Entorno de pruebas sin Stripe: el alta se activa al momento y el back
+  // office permite simular cobros. En producción solo con PAGOS_SIMULADOS=1.
+  pagosSimulados: !process.env.STRIPE_SECRET_KEY && (!produccion || process.env.PAGOS_SIMULADOS === "1"),
 
   // Correo transaccional (Resend). Sin clave, los correos se registran pero no se envían.
   correo: {

@@ -67,6 +67,8 @@ Tres puertas en la misma web:
 | `STRIPE_PRECIO_USUARIO_EXTRA` | Id del precio de 3 €/mes por usuario |
 | `RESEND_API_KEY` | Envío de correos (resend.com) |
 | `CORREO_REMITENTE` | p. ej. `Tu Servicio <hola@tuservicio.com>` |
+| `ADMIN_INICIAL_EMAIL` / `ADMIN_INICIAL_PASSWORD` / `ADMIN_INICIAL_NOMBRE` | Crea el administrador principal en el primer arranque (contraseña de 12+ caracteres) |
+| `PAGOS_SIMULADOS` | `1` en el entorno de pruebas sin Stripe (simula los cobros) |
 
 Sin `STRIPE_SECRET_KEY` y fuera de producción, los pagos se **simulan** (el
 alta se activa al momento y el back office permite simular cobros correctos
