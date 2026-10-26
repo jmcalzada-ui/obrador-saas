@@ -73,7 +73,7 @@ export default function MiObrador() {
                 )}
                 <dl className="ficha">
                   <dt>Plan</dt><dd>Básico{s.usuarios_extra ? ` + ${s.usuarios_extra} usuario(s) extra` : ""}</dd>
-                  <dt>Cuota</dt><dd>{s.importe_mensual != null ? `${euros(s.importe_mensual)} / mes sin impuestos` : "—"}</dd>
+                  <dt>Cuota</dt><dd>{s.importe_periodo != null ? `${euros(s.importe_periodo)} / ${s.periodicidad === "anual" ? "año (20 % dto.)" : "mes"} sin impuestos` : "—"}</dd>
                   <dt>Estado</dt><dd>{ESTADO_SUSC[s.estado] || s.estado}</dd>
                   <dt>Próximo cobro</dt><dd>{fecha(s.proximo_cobro)}</dd>
                   <dt>Forma de pago</dt><dd>{s.metodo_pago_resumen || (s.metodo_pago_tipo === "sepa_debit" ? "Domiciliación bancaria" : s.metodo_pago_tipo === "card" ? "Tarjeta" : "—")}</dd>

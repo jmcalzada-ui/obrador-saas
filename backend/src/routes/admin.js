@@ -88,7 +88,7 @@ adminRouter.post(
 const RESUMEN = `
   SELECT o.id, o.nombre, o.razon_social, o.cif, o.sector, o.num_empleados, o.municipio, o.provincia, o.estado,
          o.creado_en AS fecha_alta, s.contratado_en, s.plan, s.modulos, s.usuarios_incluidos, s.usuarios_extra,
-         s.importe_mensual, s.estado AS estado_suscripcion, s.proximo_cobro, s.metodo_pago_tipo, s.metodo_pago_resumen,
+         s.importe_mensual, s.importe_periodo, s.periodicidad, s.estado AS estado_suscripcion, s.proximo_cobro, s.metodo_pago_tipo, s.metodo_pago_resumen,
          s.impago_desde, s.suspendido_en, s.ultimo_cobro_ok,
          (SELECT max(u.ultimo_acceso) FROM usuarios u WHERE u.obrador_id = o.id) AS ultimo_acceso,
          (SELECT count(*)::int FROM usuarios u WHERE u.obrador_id = o.id AND u.activo) AS usuarios_activos,

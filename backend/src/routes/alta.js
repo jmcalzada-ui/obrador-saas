@@ -6,7 +6,7 @@ import { z } from "zod";
 import { comoSistema } from "../db/pool.js";
 import { config } from "../config.js";
 import { crearObrador } from "../lib/obradores.js";
-import { crearSesionPago, importeMensual } from "../lib/cobros.js";
+import { crearSesionPago, calcularImporte } from "../lib/cobros.js";
 import { ruta, validar } from "../lib/utiles.js";
 import { SECTORES } from "./obrador.js";
 
@@ -25,6 +25,9 @@ altaRouter.get("/plan", (req, res) => {
   res.json({
     basico: config.tarifas.basico,
     usuarioExtra: config.tarifas.usuarioExtra,
+    descuentoAnual: config.tarifas.descuentoAnual,
+    basicoAnual: calcularImporte({ periodicidad: "anual" }).periodo,
+    usuarioExtraAnual: Math.round(config.tarifas.usuarioExtra * 12 * (1 - config.tarifas.descuentoAnual) * 100) / 100,
     usuariosIncluidos: 2,
     pagosSimulados: config.pagosSimulados,
   });
@@ -56,6 +59,7 @@ const esquema = z.object({
   password: z.string().min(10, "La contraseña debe tener al menos 10 caracteres.").max(200),
   // Contratación y pago
   usuarios_extra: z.number().int().min(0).max(50).default(0),
+  periodicidad: z.enum(["mensual", "anual"]).default("mensual"),
   metodo: z.enum(["card", "sepa_debit"], { errorMap: () => ({ message: "Elige tarjeta o domiciliación bancaria." }) }),
   acepta_condiciones: z.literal(true, { errorMap: () => ({ message: "Debes aceptar las condiciones del servicio." }) }),
 });
@@ -82,6 +86,7 @@ altaRouter.post(
       password: d.password,
       estado: "pendiente_pago",
       usuariosExtra: d.usuarios_extra,
+      periodicidad: d.periodicidad,
       datos: {
         razon_social: d.razon_social, cif: d.cif, registro_sanitario: d.registro_sanitario || null,
         sector: d.sector, num_empleados: d.num_empleados, direccion_fiscal: d.direccion_fiscal,
@@ -92,7 +97,8 @@ altaRouter.post(
     });
     try {
       const { url } = await crearSesionPago({ obradorId: obrador.id, metodo: d.metodo });
-      res.status(201).json({ url, importeMensual: importeMensual({ usuarios_extra: d.usuarios_extra }) });
+      const imp = calcularImporte({ usuarios_extra: d.usuarios_extra, periodicidad: d.periodicidad });
+      res.status(201).json({ url, importe: imp.periodo, periodicidad: imp.periodicidad, importeMensual: imp.mensual });
     } catch (e) {
       // El obrador queda "pendiente de pago": el gestor puede entrar y reintentar.
       res.status(e.status || 502).json({ error: e.status ? e.message : "No se pudo abrir la página de pago. Entra con tu email para reintentarlo." });

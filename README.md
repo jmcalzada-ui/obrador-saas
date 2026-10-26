@@ -37,8 +37,9 @@ Tres puertas en la misma web:
 **Cobros**
 - Alta con tarjeta o domiciliación SEPA en la página segura de Stripe (los
   datos bancarios nunca pasan por nuestro servidor).
-- Cobro correcto → cuenta activa al momento + correo con factura e
-  información de la contratación.
+- Pago mensual o anual (20 % de descuento).
+- Tarjeta: cuenta activa al cobrar. Domiciliación: activa al aceptar el
+  mandato. Correo con factura e información de la contratación.
 - Cobro fallido → correo inmediato; recordatorio a los 5 días avisando de
   la suspensión; a los 10 días la cuenta queda en suspenso (el gestor solo
   puede entrar para actualizar la forma de pago). Al cobrarse, se reactiva
@@ -65,6 +66,8 @@ Tres puertas en la misma web:
 | `STRIPE_WEBHOOK_SECRET` | Secreto del webhook (`whsec_…`) |
 | `STRIPE_PRECIO_BASICO` | Id del precio de 29,90 €/mes (`price_…`) |
 | `STRIPE_PRECIO_USUARIO_EXTRA` | Id del precio de 3 €/mes por usuario |
+| `STRIPE_PRECIO_BASICO_ANUAL` | Id del precio de 287,04 €/año (−20 %) |
+| `STRIPE_PRECIO_USUARIO_EXTRA_ANUAL` | Id del precio de 28,80 €/año por usuario (−20 %) |
 | `RESEND_API_KEY` | Envío de correos (resend.com) |
 | `CORREO_REMITENTE` | p. ej. `Tu Servicio <hola@tuservicio.com>` |
 | `ADMIN_INICIAL_EMAIL` / `ADMIN_INICIAL_PASSWORD` / `ADMIN_INICIAL_NOMBRE` | Crea el administrador principal en el primer arranque (contraseña de 12+ caracteres) |
@@ -75,16 +78,21 @@ alta se activa al momento y el back office permite simular cobros correctos
 o fallidos). Sin `RESEND_API_KEY`, los correos se registran pero no se envían.
 
 ### Configurar Stripe
-1. Productos: «Plan básico» 29,90 €/mes y «Usuario extra» 3 €/mes
-   (recurrentes, mensuales). Copia sus ids de precio.
+1. Productos: «Plan básico» con dos precios recurrentes (29,90 €/mes y
+   287,04 €/año) y «Usuario extra» con otros dos (3 €/mes y 28,80 €/año).
+   Copia los cuatro ids de precio.
 2. Activa tarjeta y SEPA Direct Debit como métodos de pago.
 3. Webhook a `https://TU-DOMINIO/api/stripe/webhook` con los eventos
    `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`,
    `customer.subscription.updated` y `customer.subscription.deleted`.
 4. Portal de clientes: permite actualizar la forma de pago.
-5. En *Recuperación de ingresos*, que Stripe **no cancele** la suscripción
-   antes de 10 días (la suspensión la gestiona la app).
-6. Impuestos (IGIC/IVA) y numeración de facturas: a definir con la gestoría.
+5. En *Recuperación de ingresos*: activa los reintentos de domiciliación
+   (por falta de saldo) y que Stripe **no cancele** la suscripción antes de
+   10 días (la suspensión la gestiona la app).
+6. Con domiciliación, el acceso se da al aceptar el mandato; si el cargo
+   se rechaza días después, empieza el ciclo de impago. Conviene configurar
+   tu propio identificador de acreedor SEPA en Stripe.
+7. Impuestos (IGIC/IVA) y numeración de facturas: a definir con la gestoría.
 
 ## Desarrollo en local
 

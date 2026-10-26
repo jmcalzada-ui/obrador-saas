@@ -18,7 +18,7 @@ obradorRouter.get(
     const datos = await db(req, async (c) => {
       const { rows: [obrador] } = await c.query(`SELECT ${CAMPOS} FROM obradores`);
       const { rows: [suscripcion] } = await c.query(
-        `SELECT plan, estado, modulos, usuarios_incluidos, usuarios_extra, importe_mensual, proximo_cobro,
+        `SELECT plan, estado, modulos, usuarios_incluidos, usuarios_extra, importe_mensual, importe_periodo, periodicidad, proximo_cobro,
                 metodo_pago_tipo, metodo_pago_resumen, impago_desde, contratado_en,
                 (SELECT count(*)::int FROM usuarios WHERE activo) AS usuarios_activos
            FROM suscripciones`

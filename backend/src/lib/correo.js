@@ -31,9 +31,11 @@ export const PLANTILLAS = {
       titulo: "Tu cuenta está activa",
       parrafos: [
         `Hola ${esc(gestor.nombre)}, hemos recibido el pago y la cuenta de <strong>${esc(obrador.nombre)}</strong> ya está activa.`,
-        `<strong>Lo que has contratado:</strong> plan básico (gestor y 1 usuario más)${suscripcion.usuarios_extra ? ` + ${suscripcion.usuarios_extra} usuario(s) extra` : ""}. Importe: ${eur(suscripcion.importe_mensual)}/mes sin impuestos.`,
-        `<strong>Cobro de hoy:</strong> ${eur(pago.importe)}${pago.numero_factura ? ` (factura ${esc(pago.numero_factura)})` : ""}. Próximo cobro previsto: ${dia(suscripcion.proximo_cobro)}.`,
-        pago.url_pdf ? `<a href="${esc(pago.url_pdf)}">Descargar la factura en PDF</a>` : "",
+        `<strong>Lo que has contratado:</strong> plan básico (gestor y 1 usuario más)${suscripcion.usuarios_extra ? ` + ${suscripcion.usuarios_extra} usuario(s) extra` : ""}, pago ${suscripcion.periodicidad === "anual" ? "anual (20 % de descuento)" : "mensual"}. Importe: ${eur(suscripcion.importe_periodo ?? suscripcion.importe_mensual)}/${suscripcion.periodicidad === "anual" ? "año" : "mes"} sin impuestos.`,
+        pago
+          ? `<strong>Cobro de hoy:</strong> ${eur(pago.importe)}${pago.numero_factura ? ` (factura ${esc(pago.numero_factura)})` : ""}. Próximo cobro previsto: ${dia(suscripcion.proximo_cobro)}.`
+          : `Has elegido domiciliación bancaria: el primer cargo tarda unos días en confirmarse. Te enviaremos la factura en cuanto se complete. Mientras tanto, ya puedes usar la app.`,
+        pago?.url_pdf ? `<a href="${esc(pago.url_pdf)}">Descargar la factura en PDF</a>` : "",
         `Entra con tu email (${esc(gestor.email)}) y la contraseña que elegiste. Desde <em>Más → Equipo</em> puedes dar de alta a tu equipo.`,
       ].filter(Boolean),
       boton: { texto: "Entrar en la app", url: config.urlPublica },

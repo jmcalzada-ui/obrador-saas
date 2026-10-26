@@ -146,3 +146,51 @@ test("avisos firmados de Stripe: cobro correcto, repetido y firma falsa", async 
   cobros._usarStripe(null);
   config.stripe.webhookSecret = null;
 });
+
+test("pago anual con un 20 % de descuento", async () => {
+  const r = await request(app).post("/api/alta").send({ ...ALTA, gestor_email: "anual@espiga.test", usuarios_extra: 2, periodicidad: "anual" });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.periodicidad, "anual");
+  assert.equal(r.body.importe, 344.64, "287,04 + 2 × 28,80");
+  assert.equal(r.body.importeMensual, 28.72);
+  const { rows: [s] } = await pool.query(
+    "SELECT s.*, (SELECT max(periodo_hasta) - max(periodo_desde) FROM pagos p WHERE p.obrador_id = s.obrador_id) AS periodo FROM suscripciones s JOIN usuarios u ON u.obrador_id = s.obrador_id WHERE u.email = 'anual@espiga.test'"
+  );
+  assert.equal(s.periodicidad, "anual");
+  assert.equal(s.importe_periodo, 344.64);
+  assert.equal(s.periodo.days, 365);
+  const plan = (await request(app).get("/api/alta/plan")).body;
+  assert.equal(plan.basicoAnual, 287.04);
+  assert.equal(plan.usuarioExtraAnual, 28.8);
+});
+
+test("domiciliación: acceso al aceptar el mandato; si el primer cargo falla, ciclo de impago", async () => {
+  const real = new Stripe("sk_test_falsa");
+  config.stripe.webhookSecret = "whsec_pruebas";
+  cobros._usarStripe({ webhooks: real.webhooks, subscriptions: { retrieve: async () => ({ default_payment_method: null }) } });
+  const { crearObrador } = await import("../src/lib/obradores.js");
+  const { obrador } = await crearObrador({ nombre: "Catering SEPA", gestorEmail: "sepa@catering.test", gestorNombre: "Luis", password: "una-contraseña-larga", estado: "pendiente_pago" });
+  await pool.query("UPDATE suscripciones SET stripe_customer_id = 'cus_sepa' WHERE obrador_id = $1", [obrador.id]);
+  const firmar = (ev) => { const c = JSON.stringify(ev); return [c, real.webhooks.generateTestHeaderString({ payload: c, secret: "whsec_pruebas" })]; };
+  const enviar = ([c, f]) => request(app).post("/api/stripe/webhook").set("Content-Type", "application/json").set("Stripe-Signature", f).send(c);
+
+  // Checkout completado con el cobro aún en proceso (SEPA)
+  const r1 = await enviar(firmar({ id: "evt_sepa_1", type: "checkout.session.completed",
+    data: { object: { id: "cs_1", client_reference_id: obrador.id, customer: "cus_sepa", subscription: "sub_sepa", payment_status: "unpaid" } } }));
+  assert.equal(r1.status, 200, JSON.stringify(r1.body));
+  const est = async () => (await pool.query("SELECT o.estado, s.activado_por_mandato FROM obradores o JOIN suscripciones s ON s.obrador_id = o.id WHERE o.id = $1", [obrador.id])).rows[0];
+  assert.deepEqual(await est(), { estado: "activo", activado_por_mandato: true });
+  const g = cliente(await login("sepa@catering.test", "una-contraseña-larga"));
+  assert.equal((await g.get("/api/recepciones")).status, 200, "ya puede trabajar");
+  const tipos = async () => (await pool.query("SELECT tipo FROM emails_enviados WHERE obrador_id = $1 ORDER BY creado_en", [obrador.id])).rows.map((x) => x.tipo);
+  assert.deepEqual(await tipos(), ["bienvenida"]);
+
+  // A los días, el primer cargo se rechaza
+  const r2 = await enviar(firmar({ id: "evt_sepa_2", type: "invoice.payment_failed",
+    data: { object: { id: "in_sepa_1", customer: "cus_sepa", amount_due: 3618, amount_paid: 0, subtotal: 2990, total: 3618, attempt_count: 1, lines: { data: [] } } } }));
+  assert.equal(r2.status, 200);
+  assert.equal((await est()).estado, "impago");
+  assert.deepEqual(await tipos(), ["bienvenida", "impago_aviso"]);
+  cobros._usarStripe(null);
+  config.stripe.webhookSecret = null;
+});

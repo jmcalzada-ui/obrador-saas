@@ -22,7 +22,7 @@ export default function Alta() {
 
 function Formulario() {
   const [paso, setPaso] = useState(0);
-  const [plan, setPlan] = useState({ basico: 29.9, usuarioExtra: 3 });
+  const [plan, setPlan] = useState({ basico: 29.9, usuarioExtra: 3, basicoAnual: 287.04, usuarioExtraAnual: 28.8, descuentoAnual: 0.2 });
   const [error, setError] = useState(new URLSearchParams(window.location.search).has("cancelado")
     ? "Has salido de la página de pago sin completarlo. Puedes intentarlo de nuevo." : "");
   const [enviando, setEnviando] = useState(false);
@@ -31,12 +31,15 @@ function Formulario() {
     razon_social: "", cif: "", direccion_fiscal: "", codigo_postal: "", municipio: "", provincia: "", email_facturacion: "",
     contacto_nombre: "", telefono: "", email_contacto: "",
     gestor_nombre: "", gestor_email: "", password: "", password2: "",
-    usuarios_extra: 0, metodo: "sepa_debit", acepta_condiciones: false,
+    usuarios_extra: 0, periodicidad: "mensual", metodo: "sepa_debit", acepta_condiciones: false,
   });
   const c = (p) => setF((x) => ({ ...x, ...p }));
   useEffect(() => { api.get("/alta/plan").then(setPlan).catch(() => {}); }, []);
 
-  const total = plan.basico + f.usuarios_extra * plan.usuarioExtra;
+  const anual = f.periodicidad === "anual";
+  const total = anual ? plan.basicoAnual + f.usuarios_extra * plan.usuarioExtraAnual : plan.basico + f.usuarios_extra * plan.usuarioExtra;
+  const sinDescuento = (plan.basico + f.usuarios_extra * plan.usuarioExtra) * 12;
+  const sufijo = anual ? "año" : "mes";
 
   function validar() {
     const req = (cond, msg) => (!cond ? msg : "");
@@ -134,11 +137,17 @@ function Formulario() {
         )}
         {paso === 4 && (
           <>
+            <div className="opciones" role="radiogroup" aria-label="Periodicidad del pago">
+              <button type="button" role="radio" className="opcion" aria-checked={!anual} onClick={() => c({ periodicidad: "mensual" })}>Mensual</button>
+              <button type="button" role="radio" className="opcion" aria-checked={anual} onClick={() => c({ periodicidad: "anual" })}>
+                Anual · {Math.round(plan.descuentoAnual * 100)} % dto.
+              </button>
+            </div>
             <div className="panel pila">
-              <div className="fila entre"><strong>Plan básico</strong><span className="numero">{euros(plan.basico)} / mes</span></div>
+              <div className="fila entre"><strong>Plan básico</strong><span className="numero">{euros(anual ? plan.basicoAnual : plan.basico)} / {sufijo}</span></div>
               <p className="suave pequeno">Gestor y 1 usuario más (jefe de producción, operario u observador), con productos, entradas de mercancía, preparados internos y trazabilidad.</p>
               <div className="fila entre">
-                <div><strong>Usuarios extra</strong><div className="suave pequeno">{euros(plan.usuarioExtra)} / mes cada uno</div></div>
+                <div><strong>Usuarios extra</strong><div className="suave pequeno">{euros(anual ? plan.usuarioExtraAnual : plan.usuarioExtra)} / {sufijo} cada uno</div></div>
                 <div className="fila">
                   <button type="button" className="boton-icono" aria-label="Quitar un usuario" onClick={() => c({ usuarios_extra: Math.max(0, f.usuarios_extra - 1) })}><Minus size={20} /></button>
                   <strong className="numero" aria-live="polite" style={{ minWidth: 24, textAlign: "center" }}>{f.usuarios_extra}</strong>
@@ -146,22 +155,23 @@ function Formulario() {
                 </div>
               </div>
               <div className="fila entre" style={{ borderTop: "1px solid var(--linea)", paddingTop: 12 }}>
-                <strong>Total</strong><strong className="numero">{euros(total)} / mes + impuestos</strong>
+                <strong>Total</strong><strong className="numero">{euros(total)} / {sufijo} + impuestos</strong>
               </div>
+              {anual && <p className="suave pequeno">Equivale a {euros(total / 12)} al mes. Ahorras {euros(sinDescuento - total)} al año frente al pago mensual.</p>}
             </div>
             <div className="campo">
               <span style={{ fontWeight: 700 }}>Forma de pago (cobro mensual)</span>
               <div className="opciones anchas" role="radiogroup" aria-label="Forma de pago">
                 <button type="button" role="radio" className="opcion" aria-checked={f.metodo === "sepa_debit"} onClick={() => c({ metodo: "sepa_debit" })}>
                   <span><Landmark size={18} aria-hidden style={{ verticalAlign: "-3px" }} /> Domiciliación bancaria</span>
-                  <span className="desc">Con tu IBAN. El primer cobro puede tardar unos días en confirmarse.</span>
+                  <span className="desc">Con tu IBAN. Acceso inmediato; el cargo se confirma en unos días.</span>
                 </button>
                 <button type="button" role="radio" className="opcion" aria-checked={f.metodo === "card"} onClick={() => c({ metodo: "card" })}>
                   <span><CreditCard size={18} aria-hidden style={{ verticalAlign: "-3px" }} /> Tarjeta</span>
                   <span className="desc">Activación inmediata.</span>
                 </button>
               </div>
-              <span className="ayuda">Los datos bancarios se introducen en la página segura de nuestro procesador de pagos (Stripe); no los guardamos nosotros.</span>
+              <span className="ayuda">{anual ? "Se cobra una vez al año" : "Se cobra cada mes"}, de forma automática. Los datos bancarios se introducen en la página segura de nuestro procesador de pagos (Stripe); no los guardamos nosotros.</span>
             </div>
             <label className="fila" style={{ alignItems: "flex-start", cursor: "pointer" }}>
               <input type="checkbox" checked={f.acepta_condiciones} onChange={(e) => c({ acepta_condiciones: e.target.checked })} style={{ width: 24, height: 24, marginTop: 2 }} />
@@ -194,7 +204,7 @@ function AltaCompletada() {
       <p>
         {simulado
           ? "Pago simulado (entorno de pruebas): la cuenta ya está activa."
-          : "En cuanto se confirme el cobro, la cuenta se activa automáticamente y te enviamos un correo con la factura y los datos de tu contratación. Con tarjeta suele ser inmediato; con domiciliación bancaria puede tardar unos días."}
+          : "En unos segundos la cuenta queda activa y te enviamos un correo con los datos de tu contratación. Con tarjeta recibirás la factura al momento; con domiciliación, cuando el banco confirme el cargo (unos días), pero puedes empezar a usar la app ya."}
       </p>
       <a className="boton principal grande bloque" href="/">Entrar en la app</a>
     </main>

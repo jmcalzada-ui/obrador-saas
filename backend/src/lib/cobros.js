@@ -13,9 +13,19 @@ let stripe = config.stripe.secretKey ? new Stripe(config.stripe.secretKey) : nul
 export function _usarStripe(cliente) { stripe = cliente; }
 export const stripeActivo = () => Boolean(stripe);
 
-export function importeMensual(s) {
-  return Math.round((config.tarifas.basico + (s.usuarios_extra || 0) * config.tarifas.usuarioExtra) * 100) / 100;
+const r2 = (n) => Math.round(n * 100) / 100;
+
+/** Precio por periodo (mes o año) y su equivalente mensual. Anual = 12 meses con descuento. */
+export function calcularImporte({ usuarios_extra = 0, periodicidad = "mensual" }) {
+  const t = config.tarifas;
+  const mensual = t.basico + (usuarios_extra || 0) * t.usuarioExtra;
+  if (periodicidad === "anual") {
+    const anual = r2(r2(t.basico * 12 * (1 - t.descuentoAnual)) + (usuarios_extra || 0) * r2(t.usuarioExtra * 12 * (1 - t.descuentoAnual)));
+    return { periodo: anual, mensual: r2(anual / 12), periodicidad };
+  }
+  return { periodo: r2(mensual), mensual: r2(mensual), periodicidad };
 }
+export const importeMensual = (s) => calcularImporte(s).mensual;
 
 const DIA = 86400000;
 const deUnix = (s) => (s ? new Date(s * 1000) : null);
@@ -38,7 +48,7 @@ export async function crearSesionPago({ obradorId, metodo }) {
     await simularCobro(obradorId);
     return { url: `${config.urlPublica}/alta/completada?simulado=1` };
   }
-  if (!stripe || !config.stripe.precios.basico) {
+  if (!stripe) {
     throw Object.assign(new Error("Los pagos todavía no están configurados."), { status: 503 });
   }
   let customerId = d.suscripcion.stripe_customer_id;
@@ -63,10 +73,12 @@ export async function crearSesionPago({ obradorId, metodo }) {
     }
     await comoSistema((c) => c.query("UPDATE suscripciones SET stripe_customer_id = $2 WHERE obrador_id = $1", [obradorId, customerId]));
   }
-  const items = [{ price: config.stripe.precios.basico, quantity: 1 }];
-  if (d.suscripcion.usuarios_extra > 0 && config.stripe.precios.usuarioExtra) {
-    items.push({ price: config.stripe.precios.usuarioExtra, quantity: d.suscripcion.usuarios_extra });
-  }
+  const anual = d.suscripcion.periodicidad === "anual";
+  const precioBase = anual ? config.stripe.precios.basicoAnual : config.stripe.precios.basico;
+  const precioExtra = anual ? config.stripe.precios.usuarioExtraAnual : config.stripe.precios.usuarioExtra;
+  if (!precioBase) throw Object.assign(new Error("El pago anual todavía no está configurado."), { status: 503 });
+  const items = [{ price: precioBase, quantity: 1 }];
+  if (d.suscripcion.usuarios_extra > 0 && precioExtra) items.push({ price: precioExtra, quantity: d.suscripcion.usuarios_extra });
   const sesion = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -158,6 +170,9 @@ async function tratarEvento(evento) {
         ])
       );
       await actualizarMetodoPago(obradorId, o.subscription);
+      // Domiciliación: el cobro tarda unos días en confirmarse. Se da acceso
+      // ya, al aceptar el mandato; si luego el cobro falla, entra el ciclo de impago.
+      if (o.payment_status !== "paid") await activarPorMandato(obradorId, o.id);
       return "ok";
     }
     case "invoice.paid": {
@@ -190,6 +205,23 @@ async function tratarEvento(evento) {
     default:
       return "ignorado";
   }
+}
+
+/** Acceso al aceptar el mandato SEPA, antes de que se confirme el primer cobro. */
+export async function activarPorMandato(obradorId, referencia) {
+  const d = await comoSistema(async (c) => {
+    const { rowCount } = await c.query(
+      `UPDATE suscripciones SET estado = 'activa', contratado_en = COALESCE(contratado_en, now()), activado_por_mandato = true,
+              metodo_pago_tipo = COALESCE(metodo_pago_tipo, 'sepa_debit'), actualizado_en = now()
+        WHERE obrador_id = $1 AND contratado_en IS NULL`,
+      [obradorId]
+    );
+    if (!rowCount) return null; // ya estaba activo
+    await c.query("UPDATE obradores SET estado = 'activo' WHERE id = $1 AND estado = 'pendiente_pago'", [obradorId]);
+    return datosObrador(c, obradorId);
+  });
+  if (!d) return;
+  await enviarCorreo({ tipo: "bienvenida", referencia: `mandato:${referencia}`, obradorId, para: destinatario(d), datos: { ...d, pago: null } });
 }
 
 /** Guarda "Visa ···4242" o "Domiciliación ···1234" (nunca el número completo). */
@@ -341,9 +373,9 @@ export function programarRevisionImpagos() {
 
 /** Desarrollo y pruebas: simula una factura cobrada o fallida. */
 export async function simularCobro(obradorId, { fallido = false, fecha = new Date() } = {}) {
-  const hasta = new Date(fecha.getTime() + 30 * DIA);
   const s = await comoSistema(async (c) => (await c.query("SELECT * FROM suscripciones WHERE obrador_id = $1", [obradorId])).rows[0]);
-  const importe = s.importe_mensual ?? importeMensual(s);
+  const hasta = new Date(fecha.getTime() + (s.periodicidad === "anual" ? 365 : 30) * DIA);
+  const importe = s.importe_periodo ?? calcularImporte(s).periodo;
   const pago = {
     stripe_invoice_id: `sim_${obradorId.slice(0, 8)}_${fecha.getTime()}_${Math.random().toString(36).slice(2, 6)}`,
     numero_factura: `SIM-${fecha.getTime().toString().slice(-6)}`,

@@ -1,6 +1,6 @@
 import { comoSistema } from "../db/pool.js";
 import { hashPassword, passwordTemporal } from "./utiles.js";
-import { importeMensual } from "./cobros.js";
+import { calcularImporte } from "./cobros.js";
 
 /**
  * Da de alta un obrador con su suscripción (plan básico) y su gestor.
@@ -11,8 +11,9 @@ import { importeMensual } from "./cobros.js";
  */
 export async function crearObrador({
   nombre, gestorEmail, gestorNombre, password,
-  estado = "activo", datos = {}, usuariosExtra = 0,
+  estado = "activo", datos = {}, usuariosExtra = 0, periodicidad = "mensual",
 }) {
+  const importe = calcularImporte({ usuarios_extra: usuariosExtra, periodicidad });
   const pass = password || passwordTemporal();
   const hash = await hashPassword(pass);
   return comoSistema(async (db) => {
@@ -27,9 +28,9 @@ export async function crearObrador({
     );
     const activo = estado === "activo";
     await db.query(
-      `INSERT INTO suscripciones (obrador_id, plan, estado, usuarios_extra, importe_mensual, contratado_en)
-       VALUES ($1, 'basico', $2, $3, $4, $5)`,
-      [obrador.id, activo ? "activa" : "pendiente_pago", usuariosExtra, importeMensual({ usuarios_extra: usuariosExtra }), activo ? new Date() : null]
+      `INSERT INTO suscripciones (obrador_id, plan, estado, usuarios_extra, periodicidad, importe_periodo, importe_mensual, contratado_en)
+       VALUES ($1, 'basico', $2, $3, $4, $5, $6, $7)`,
+      [obrador.id, activo ? "activa" : "pendiente_pago", usuariosExtra, periodicidad, importe.periodo, importe.mensual, activo ? new Date() : null]
     );
     const { rows: [gestor] } = await db.query(
       `INSERT INTO usuarios (obrador_id, email, nombre, password_hash, rol, debe_cambiar_password)

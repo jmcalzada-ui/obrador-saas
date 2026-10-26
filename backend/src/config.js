@@ -24,8 +24,10 @@ export const config = {
     secretKey: process.env.STRIPE_SECRET_KEY || null,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || null,
     precios: {
-      basico: process.env.STRIPE_PRECIO_BASICO || null,           // 29,90 €/mes
-      usuarioExtra: process.env.STRIPE_PRECIO_USUARIO_EXTRA || null, // 3 €/mes por usuario
+      basico: process.env.STRIPE_PRECIO_BASICO || null,                     // 29,90 €/mes
+      usuarioExtra: process.env.STRIPE_PRECIO_USUARIO_EXTRA || null,         // 3 €/mes por usuario
+      basicoAnual: process.env.STRIPE_PRECIO_BASICO_ANUAL || null,           // 287,04 €/año (−20 %)
+      usuarioExtraAnual: process.env.STRIPE_PRECIO_USUARIO_EXTRA_ANUAL || null, // 28,80 €/año por usuario (−20 %)
     },
   },
   // Entorno de pruebas sin Stripe: el alta se activa al momento y el back
@@ -46,5 +48,5 @@ export const config = {
   },
 
   // Precios del plan (para mostrar y calcular el importe; Stripe cobra lo suyo).
-  tarifas: { basico: 29.9, usuarioExtra: 3 },
+  tarifas: { basico: 29.9, usuarioExtra: 3, descuentoAnual: 0.2 },
 };
