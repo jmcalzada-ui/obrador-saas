@@ -9,8 +9,9 @@ import { obradorRouter } from "./routes/obrador.js";
 import { catalogoRouter } from "./routes/catalogo.js";
 import { recepcionesRouter } from "./routes/recepciones.js";
 import { altaRouter } from "./routes/alta.js";
-import { preparadosRouter, stockRouter } from "./routes/preparados.js";
+import { preparadosRouter, produccionesRouter, stockRouter } from "./routes/preparados.js";
 import { adminRouter } from "./routes/admin.js";
+import { informesRouter } from "./routes/informes.js";
 import { stripeWebhookRouter } from "./routes/stripe-webhook.js";
 import { errorPostgres } from "./lib/utiles.js";
 
@@ -35,7 +36,9 @@ export function crearApp() {
   app.use("/api/catalogo", catalogoRouter);
   app.use("/api/recepciones", recepcionesRouter);
   app.use("/api/preparados", preparadosRouter);
+  app.use("/api/producciones", produccionesRouter);
   app.use("/api/stock", stockRouter);
+  app.use("/api/informes", informesRouter);
   app.use("/api/alta", altaRouter);
   app.use("/api/admin", adminRouter);
   app.use("/api", (req, res) => res.status(404).json({ error: "Ruta no encontrada." }));

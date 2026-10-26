@@ -143,3 +143,58 @@ test("ajuste manual de stock por el gestor", async () => {
   const lotes = (await O.api.get(`/api/stock/lotes?producto_id=${leche.id}`)).body.lotes;
   assert.equal(lotes[0].disponible, 3);
 });
+
+test("producto final: usa entradas y producción intermedia, sin stock propio y con lote único entre ambos", async () => {
+  const fresca = (await O.api.post("/api/recepciones", { fecha: "2026-10-23", producto_id: harina.id, cantidad: 10, num_lote: "H-2" })).body.recepcion;
+  const masa = (await O.api.get("/api/preparados?q=masa")).body.preparados[0];
+  const r = await O.api.post("/api/producciones", {
+    nuevo: { nombre: "Croquetas de pollo (bandeja 12 ud)", unidad_medida: "ud", proceso_termico: false, vida_util_dias: 90 },
+    fecha: "2026-10-23", num_lote: "CP-261023-1", cantidad: 40, unidades: 480,
+    ingredientes: [
+      { origen: "preparado", lote_id: masa.id, cantidad: 4 },
+      { origen: "recepcion", lote_id: fresca.id, cantidad: 1.5 },
+    ],
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.equal(r.body.produccion.unidades, 480);
+  assert.equal(r.body.produccion.caducidad, "2027-01-21");
+  assert.equal(r.body.produccion.disponible, null);
+  // Descuenta stock de los lotes usados
+  assert.equal((await O.api.get(`/api/preparados/${masa.id}`)).body.preparado.disponible, 2);
+  // La producción intermedia sabe en qué producto final se usó
+  const usos = (await O.api.get(`/api/preparados/${masa.id}`)).body.usos;
+  assert.ok(usos.some((u) => u.destino_tipo === "produccion" && u.producto_destino.startsWith("Croquetas")));
+  // Ficha del producto final con sus ingredientes
+  const det = (await O.api.get(`/api/producciones/${r.body.produccion.id}`)).body;
+  assert.equal(det.ingredientes.length, 2);
+  // El nº de lote no puede repetirse con uno de producción intermedia
+  const rep = await O.api.post("/api/producciones", {
+    producto_id: r.body.produccion.producto_id, fecha: "2026-10-24", num_lote: "MCP-1", cantidad: 1,
+    ingredientes: [{ origen: "recepcion", lote_id: fresca.id, cantidad: 0.1 }],
+  });
+  assert.equal(rep.status, 409);
+  // Listado con filtros de producto y fechas
+  assert.equal((await O.api.get("/api/producciones?q=croq&desde=2026-10-23&hasta=2026-10-23")).body.producciones.length, 1);
+  assert.equal((await O.api.get("/api/producciones?desde=2026-10-24")).body.producciones.length, 0);
+  assert.equal((await O.api.get("/api/preparados?desde=2026-10-22&hasta=2026-10-22")).body.preparados.length, 1);
+});
+
+test("informes Excel y PDF de los cuatro apartados", async () => {
+  const fs = await import("node:fs");
+  const dir = process.env.INFORMES_DIR;
+  for (const seccion of ["productos", "entradas", "intermedia", "final"]) {
+    const pdf = await O.api.get(`/api/informes/${seccion}?formato=pdf&desde=2026-10-01&hasta=2026-10-31`).buffer(true).parse((res, cb) => {
+      const trozos = []; res.on("data", (t) => trozos.push(t)); res.on("end", () => cb(null, Buffer.concat(trozos)));
+    });
+    assert.equal(pdf.status, 200, `pdf ${seccion}`);
+    assert.equal(pdf.headers["content-type"], "application/pdf");
+    assert.equal(pdf.body.subarray(0, 4).toString(), "%PDF");
+    const xlsx = await O.api.get(`/api/informes/${seccion}?formato=xlsx&q=a`).buffer(true).parse((res, cb) => {
+      const trozos = []; res.on("data", (t) => trozos.push(t)); res.on("end", () => cb(null, Buffer.concat(trozos)));
+    });
+    assert.equal(xlsx.status, 200, `xlsx ${seccion}`);
+    assert.equal(xlsx.body.subarray(0, 2).toString(), "PK", "un .xlsx es un zip");
+    if (dir) { fs.writeFileSync(`${dir}/${seccion}.pdf`, pdf.body); fs.writeFileSync(`${dir}/${seccion}.xlsx`, xlsx.body); }
+  }
+  assert.equal((await O.api.get("/api/informes/otra")).status, 404);
+});
