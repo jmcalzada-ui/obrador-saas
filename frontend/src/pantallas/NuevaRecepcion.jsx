@@ -10,9 +10,11 @@ const PASOS = ["Producto", "Lote y cantidad", "Control de entrada", "Revisar"];
 // Temperaturas de referencia en recepción según la conservación del producto.
 const LIMITE_TEMP = { refrigerado: { max: 7, texto: "Refrigerado: como máximo 7 °C (lo habitual, de 0 a 4 °C)." }, congelado: { max: -15, texto: "Congelado: −18 °C o menos (tolerancia hasta −15 °C)." } };
 
-export default function NuevaRecepcion() {
+/** Registrar una entrada nueva o, con `id`, editar todas las casillas de una existente. */
+export default function NuevaRecepcion({ id }) {
+  const editar = Boolean(id);
   const toast = useToast();
-  const [paso, setPaso] = useState(0);
+  const [paso, setPaso] = useState(editar ? 1 : 0);
   const [productos, setProductos] = useState(null);
   const [proveedores, setProveedores] = useState([]);
   const [recientes, setRecientes] = useState([]);
@@ -27,11 +29,23 @@ export default function NuevaRecepcion() {
   const cambiar = (patch) => setF((x) => ({ ...x, ...patch }));
 
   useEffect(() => {
-    Promise.all([api.get("/catalogo/productos?tipo=materia_prima"), api.get("/catalogo/proveedores"), api.get("/recepciones?limite=300")])
-      .then(([p, pr, r]) => {
-        setProductos(p.productos.filter((x) => x.activo));
-        setProveedores(pr.proveedores.filter((x) => x.activo));
+    Promise.all([api.get("/catalogo/productos?tipo=materia_prima"), api.get("/catalogo/proveedores"), api.get("/recepciones?limite=300"),
+      editar ? api.get(`/recepciones/${id}`) : null])
+      .then(([p, pr, r, actual]) => {
+        const e = actual?.recepcion;
+        setProductos(p.productos.filter((x) => x.activo || x.id === e?.producto_id));
+        setProveedores(pr.proveedores.filter((x) => x.activo || x.id === e?.proveedor_id));
         setRecientes(r.recepciones);
+        if (e) {
+          const t = (v) => (v == null ? "" : String(v).replace(".", ","));
+          setF({
+            producto: p.productos.find((x) => x.id === e.producto_id) || null, marca_id: e.marca_id, proveedor_id: e.proveedor_id,
+            num_lote: e.num_lote || "", cantidad: t(e.cantidad), bultos: t(e.bultos), caducidad: e.caducidad || "", factura: e.factura || "",
+            fecha: e.fecha, estado_entrada: e.estado_entrada, temp_entrada: t(e.temp_entrada),
+            precio: e.precio_total != null ? t(e.precio_total) : "", modoPrecio: "total", observaciones: e.observaciones || "",
+            control_envase: e.control_envase, control_etiquetado: e.control_etiquetado, control_transporte: e.control_transporte,
+          });
+        }
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -79,7 +93,8 @@ export default function NuevaRecepcion() {
     setGuardando(true);
     setError("");
     try {
-      const { recepcion } = await api.post("/recepciones", {
+      const enviar = editar ? (cuerpo) => api.patch(`/recepciones/${id}`, cuerpo) : (cuerpo) => api.post("/recepciones", cuerpo);
+      const { recepcion } = await enviar({
         fecha: f.fecha, producto_id: f.producto.id, marca_id: f.marca_id, proveedor_id: f.proveedor_id,
         num_lote: f.num_lote.trim(), caducidad: f.caducidad || null, factura: f.factura.trim(),
         temp_entrada: aNumero(f.temp_entrada), estado_entrada: f.estado_entrada,
@@ -88,7 +103,7 @@ export default function NuevaRecepcion() {
         control_envase: f.control_envase, control_etiquetado: f.control_etiquetado, control_transporte: f.control_transporte,
         observaciones: f.observaciones.trim(),
       });
-      toast("Entrada registrada");
+      toast(editar ? "Cambios guardados" : "Entrada registrada");
       window.location.hash = `/entradas/${recepcion.id}`;
     } catch (e) {
       setError(e.message);
@@ -99,7 +114,7 @@ export default function NuevaRecepcion() {
   if (!productos) {
     return (
       <>
-        <Cabecera titulo="Nueva entrada" volver="/entradas" />
+        <Cabecera titulo={editar ? "Editar entrada" : "Nueva entrada"} volver={editar ? `/entradas/${id}` : "/entradas"} />
         <main className="contenido">{error ? <Aviso tipo="error">{error}</Aviso> : <Cargando />}</main>
       </>
     );
@@ -107,7 +122,7 @@ export default function NuevaRecepcion() {
 
   return (
     <>
-      <Cabecera titulo="Nueva entrada" volver={paso === 0 ? "/entradas" : undefined} />
+      <Cabecera titulo={editar ? "Editar entrada" : "Nueva entrada"} volver={editar ? `/entradas/${id}` : paso === 0 ? "/entradas" : undefined} />
       <main className="contenido">
         <div className="pasos" aria-hidden>{PASOS.map((p, i) => <span key={p} className={i <= paso ? "hecho" : ""} />)}</div>
         <div className="paso-titulo">
@@ -116,7 +131,7 @@ export default function NuevaRecepcion() {
         </div>
 
         {paso === 0 && <PasoProducto productos={productos} setProductos={setProductos} onElegir={elegirProducto} />}
-        {paso === 1 && <PasoLote f={f} cambiar={cambiar} proveedores={proveedores} setProveedores={setProveedores} setProductos={setProductos} />}
+        {paso === 1 && <PasoLote f={f} cambiar={cambiar} proveedores={proveedores} setProveedores={setProveedores} setProductos={setProductos} onCambiarProducto={() => { setError(""); setPaso(0); }} />}
         {paso === 2 && <PasoControl f={f} cambiar={cambiar} precioUnidad={precioUnidad} precioTotal={precioTotal} />}
         {paso === 3 && <PasoRevisar f={f} proveedores={proveedores} irA={setPaso} precioUnidad={precioUnidad} precioTotal={precioTotal} />}
 
@@ -131,7 +146,7 @@ export default function NuevaRecepcion() {
               <button className="boton principal grande" style={{ flex: 1 }} onClick={siguiente}>Siguiente <ChevronRight size={22} aria-hidden /></button>
             ) : (
               <button className="boton principal grande" style={{ flex: 1 }} onClick={guardar} disabled={guardando}>
-                <Check size={22} aria-hidden /> {guardando ? "Guardando…" : "Guardar entrada"}
+                <Check size={22} aria-hidden /> {guardando ? "Guardando…" : editar ? "Guardar cambios" : "Guardar entrada"}
               </button>
             )}
           </div>
@@ -197,7 +212,7 @@ function PasoProducto({ productos, setProductos, onElegir }) {
   );
 }
 
-function PasoLote({ f, cambiar, proveedores, setProveedores, setProductos }) {
+function PasoLote({ f, cambiar, proveedores, setProveedores, setProductos, onCambiarProducto }) {
   const marcaActual = f.producto.marcas.find((m) => m.id === f.marca_id);
   const provActual = proveedores.find((p) => p.id === f.proveedor_id);
   const [textoMarca, setTextoMarca] = useState(marcaActual?.nombre || "");
@@ -225,12 +240,13 @@ function PasoLote({ f, cambiar, proveedores, setProveedores, setProductos }) {
   return (
     <div className="pila">
       <div className="panel fila entre">
-        <strong>{f.producto.nombre}</strong>
+        <strong style={{ flex: 1 }}>{f.producto.nombre}</strong>
         <span className="distintivo">{f.producto.unidad_medida}</span>
+        {onCambiarProducto && <button type="button" className="boton" onClick={onCambiarProducto}>Cambiar</button>}
       </div>
 
       <Autocompletar
-        etiqueta="Marca"
+        etiqueta="Marca (fabricante)"
         valor={textoMarca}
         onTexto={(t) => { setTextoMarca(t); if (marcaActual && t !== marcaActual.nombre) cambiar({ marca_id: null }); }}
         opciones={f.producto.marcas.map((m) => ({ id: m.id, texto: m.nombre, detalle: m.formato || undefined, m }))}

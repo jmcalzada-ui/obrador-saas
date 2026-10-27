@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Home, Truck, CookingPot, Package, Menu, CreditCard } from "lucide-react";
+import { Truck, CookingPot, Package, Menu, CreditCard } from "lucide-react";
 import { api, sesion } from "./api.js";
 import { SesionContext, ProveedorToast, Cargando, Aviso, fecha } from "./componentes/ui.jsx";
 import Login from "./pantallas/Login.jsx";
 import CambiarPassword from "./pantallas/CambiarPassword.jsx";
-import Inicio from "./pantallas/Inicio.jsx";
 import Recepciones from "./pantallas/Recepciones.jsx";
 import NuevaRecepcion from "./pantallas/NuevaRecepcion.jsx";
 import RecepcionDetalle from "./pantallas/RecepcionDetalle.jsx";
@@ -20,7 +19,7 @@ import { useLogo } from "./componentes/Logo.jsx";
 
 // Navegación por #ruta: funciona con el botón atrás del móvil y al recargar.
 function useRuta() {
-  const leer = () => (window.location.hash.replace(/^#/, "") || "/inicio").split("?")[0];
+  const leer = () => (window.location.hash.replace(/^#/, "") || "/entradas").split("?")[0];
   const [ruta, setRuta] = useState(leer);
   useEffect(() => {
     const f = () => { setRuta(leer()); window.scrollTo(0, 0); };
@@ -32,7 +31,6 @@ function useRuta() {
 
 // "texto" se ve en el móvil (barra inferior); "largo", en el ordenador (barra lateral).
 const SECCIONES = [
-  { id: "inicio", texto: "Inicio", icono: Home },
   { id: "productos", texto: "Productos", icono: Package },
   { id: "entradas", texto: "Entradas", largo: "Entradas de mercancía", icono: Truck },
   { id: "produccion", texto: "Producción", icono: CookingPot },
@@ -92,14 +90,20 @@ function Shell() {
   const partes = ruta.split("/").filter(Boolean);
   // Enlaces antiguos (#/preparados, #/intermedia, #/final) → #/produccion
   const antiguo = { preparados: "i", intermedia: "i", final: "f" }[partes[0]];
-  const seccion = antiguo ? "produccion" : partes[0] || "inicio";
+  // Sin Inicio: la app se abre en Entradas (también desde enlaces antiguos a #/inicio).
+  const seccion = antiguo ? "produccion" : ["productos", "entradas", "produccion", "mas"].includes(partes[0]) ? partes[0] : "entradas";
   let [a, b] = [partes[1], partes[2]];
   if (antiguo && a && a !== "nuevo") [a, b] = [antiguo, a];
 
   let pantalla;
-  if (seccion === "entradas") pantalla = a === "nueva" ? <NuevaRecepcion /> : a ? <RecepcionDetalle id={a} /> : <Recepciones />;
+  if (seccion === "entradas") {
+    if (a === "nueva") pantalla = <NuevaRecepcion />;
+    else if (a && b === "editar") pantalla = <NuevaRecepcion key={`editar-${a}`} id={a} />;
+    else pantalla = a ? <RecepcionDetalle id={a} /> : <Recepciones />;
+  }
   else if (seccion === "produccion") {
     if (a === "nueva" || a === "nuevo") pantalla = <NuevaProduccion />;
+    else if ((a === "i" || a === "f") && b && partes[3] === "editar") pantalla = <NuevaProduccion key={`editar-${a}-${b}`} id={b} tipo={a === "i" ? "intermedia" : "final"} />;
     else if ((a === "i" || a === "f") && b) pantalla = <ProduccionDetalle key={`${a}-${b}`} id={b} tipo={a === "i" ? "intermedia" : "final"} />;
     else pantalla = <Produccion />;
   }
@@ -108,7 +112,7 @@ function Shell() {
   else if (seccion === "mas" && a === "obrador") pantalla = <MiObrador />;
   else if (seccion === "mas" && a === "cuenta") pantalla = <CambiarPassword />;
   else if (seccion === "mas") pantalla = <Mas />;
-  else pantalla = <Inicio />;
+  else pantalla = <Recepciones />;
 
   return (
     <div className="app">

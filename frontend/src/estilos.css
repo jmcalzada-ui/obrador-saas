@@ -470,3 +470,46 @@ button.dato:hover { border-color: #b9c3be; }
   .accion-fija .fila.doble { min-width: 0; background: none; border: 0; box-shadow: none; padding: 0; gap: 10px; }
   .accion-fija .fila.doble > * { box-shadow: 0 6px 20px rgba(30, 78, 140, 0.28); padding: 0 24px; }
 }
+
+/* Lista de ingredientes (para la etiqueta) */
+textarea.declaracion { min-height: 150px; font-size: 1rem; line-height: 1.5; }
+.declaracion-texto { white-space: pre-wrap; background: #fafbfb; border: 1px solid var(--linea); border-radius: var(--radio-sm); padding: 12px 14px; }
+
+/* Alérgenos: contiene (azul) · trazas (verde) */
+.leyenda-alergenos { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.88rem; align-items: center; }
+.leyenda-alergenos span { display: inline-flex; align-items: center; gap: 6px; }
+.muestra { display: inline-block; width: 16px; height: 16px; border-radius: 4px; }
+.muestra.contiene { background: var(--azul); }
+.muestra.trazas { background: var(--verde-claro); border: 2px dashed var(--verde); }
+.alergenos { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.alergeno {
+  min-height: var(--toque); padding: 6px 10px; cursor: pointer; text-align: center;
+  border: 1.5px solid var(--linea); border-radius: var(--radio-sm); background: var(--superficie);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2;
+}
+.alergeno small { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; min-height: 0.9em; }
+.alergeno.contiene { background: var(--azul); border-color: var(--azul); color: #fff; font-weight: 700; }
+.alergeno.trazas { background: var(--verde-claro); border: 2px dashed var(--verde); color: var(--verde); font-weight: 700; }
+.resumen-alergenos { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.alergeno-mini { padding: 1px 8px; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
+.alergeno-mini.contiene { background: var(--azul); color: #fff; }
+.alergeno-mini.trazas { background: var(--verde-claro); color: var(--verde); border: 1px dashed var(--verde); }
+.selector-orden { position: relative; display: block; }
+.selector-orden svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--tinta-suave); pointer-events: none; }
+.selector-orden select { padding-left: 42px; min-height: 46px; font-size: 0.98rem; }
+
+/* ---------- Filtros: que nada se monte encima de nada ----------
+   Los campos de fecha de Safari y de algunos Windows tienen un ancho propio
+   mayor que su casilla y se salían por encima de los botones de Excel y PDF.
+   Ahora cada pieza ocupa lo que necesita y, si no cabe, pasa a la línea siguiente. */
+input.entrada[type="date"] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; }
+.filtros > * { min-width: 0; }
+.filtros .exportar .boton { white-space: nowrap; flex-shrink: 0; }
+@media (min-width: 1024px) {
+  .filtros { column-gap: 16px; row-gap: 12px; }
+  .filtros .buscador { flex: 1 1 280px; }
+  .filtros .fechas { flex: 0 1 auto; flex-wrap: nowrap; }
+  .filtros .fechas label { flex: 0 0 auto; width: auto; }
+  .filtros .fechas .entrada { width: 11.5em; }
+  .filtros .exportar { flex: 0 0 auto; flex-wrap: nowrap; gap: 8px; }
+}

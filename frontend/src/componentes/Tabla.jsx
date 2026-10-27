@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 const comparar = (a, b) => {
@@ -7,23 +7,26 @@ const comparar = (a, b) => {
   return String(a ?? "").localeCompare(String(b ?? ""), "es", { numeric: true, sensitivity: "base" });
 };
 
+/** Ordena filas según { titulo, dir } (1 = A-Z / menor a mayor, -1 = Z-A / mayor a menor). */
+export function ordenar(filas, columnas, orden) {
+  const col = orden && columnas.find((c) => c.titulo === orden.titulo);
+  if (!filas || !col?.orden) return filas;
+  return [...filas].sort((a, b) => comparar(col.orden(a), col.orden(b)) * orden.dir);
+}
+
+/** Siguiente estado al pulsar una cabecera: A-Z → Z-A → sin ordenar. */
+export const siguienteOrden = (o, titulo) => (o?.titulo !== titulo ? { titulo, dir: 1 } : o.dir === 1 ? { titulo, dir: -1 } : null);
+
 /**
  * Tabla para ordenador. columnas: [{ titulo, celda: (fila) => nodo, orden?: (fila) => valor
- * (la columna se puede ordenar pulsando su título), num?, ajustar? (texto largo), ancho? }]
+ * (pulsando el título se ordena A-Z / Z-A), num?, ajustar? (texto largo), ancho? }]
+ * El orden puede llevarlo la pantalla (orden + onOrden) para compartirlo con la vista de móvil.
  */
-export default function Tabla({ columnas, filas, clave = (f) => f.id, onFila, etiqueta }) {
-  const [orden, setOrden] = useState(null); // { titulo, dir: 1 | -1 }
-
-  const ordenadas = useMemo(() => {
-    const col = orden && columnas.find((c) => c.titulo === orden.titulo);
-    if (!col?.orden) return filas;
-    return [...filas].sort((a, b) => comparar(col.orden(a), col.orden(b)) * orden.dir);
-  }, [filas, orden, columnas]);
-
-  function pulsar(c) {
-    if (!c.orden) return;
-    setOrden((o) => (o?.titulo !== c.titulo ? { titulo: c.titulo, dir: 1 } : o.dir === 1 ? { titulo: c.titulo, dir: -1 } : null));
-  }
+export default function Tabla({ columnas, filas, clave = (f) => f.id, onFila, etiqueta, orden: ordenExterno, onOrden }) {
+  const [ordenInterno, setOrdenInterno] = useState(null);
+  const orden = onOrden ? ordenExterno : ordenInterno;
+  const setOrden = onOrden || setOrdenInterno;
+  const ordenadas = onOrden ? filas : ordenar(filas, columnas, orden);
 
   return (
     <div className="tabla-scroll">
@@ -37,7 +40,8 @@ export default function Tabla({ columnas, filas, clave = (f) => f.id, onFila, et
                 <th key={c.titulo} className={c.num ? "num" : undefined} style={c.ancho ? { width: c.ancho } : undefined}
                   aria-sort={activa ? (orden.dir === 1 ? "ascending" : "descending") : undefined}>
                   {c.orden ? (
-                    <button type="button" className={`ordenar ${activa ? "activa" : ""}`} onClick={() => pulsar(c)} title="Ordenar">
+                    <button type="button" className={`ordenar ${activa ? "activa" : ""}`} onClick={() => setOrden(siguienteOrden(orden, c.titulo))}
+                      title={activa && orden.dir === 1 ? "Ordenar de Z a A (de mayor a menor)" : "Ordenar de A a Z (de menor a mayor)"}>
                       {c.titulo} <Icono size={14} aria-hidden />
                     </button>
                   ) : c.titulo}
@@ -58,5 +62,26 @@ export default function Tabla({ columnas, filas, clave = (f) => f.id, onFila, et
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** En el móvil (sin tabla): desplegable para ordenar por cualquier columna, A-Z o Z-A. */
+export function SelectorOrden({ columnas, orden, onOrden, textoDefecto = "Orden: más recientes primero" }) {
+  const valor = orden ? `${orden.titulo}|${orden.dir}` : "";
+  return (
+    <label className="selector-orden">
+      <ArrowUpDown size={18} aria-hidden />
+      <span className="oculto-visual">Ordenar por</span>
+      <select className="entrada" value={valor} onChange={(e) => {
+        const [titulo, dir] = e.target.value.split("|");
+        onOrden(titulo ? { titulo, dir: Number(dir) } : null);
+      }}>
+        <option value="">{textoDefecto}</option>
+        {columnas.filter((c) => c.orden).flatMap((c) => [
+          <option key={`${c.titulo}1`} value={`${c.titulo}|1`}>{c.titulo}: A → Z / menor a mayor</option>,
+          <option key={`${c.titulo}-1`} value={`${c.titulo}|-1`}>{c.titulo}: Z → A / mayor a menor</option>,
+        ])}
+      </select>
+    </label>
   );
 }

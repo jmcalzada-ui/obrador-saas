@@ -5,7 +5,7 @@ import { Aviso, Cargando, useSesion, num, fecha, diasHasta } from "../componente
 import EstadoTermico from "../componentes/EstadoTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import Filtros, { filtrosVacios, aParametros } from "../componentes/Filtros.jsx";
-import Tabla from "../componentes/Tabla.jsx";
+import Tabla, { ordenar, SelectorOrden } from "../componentes/Tabla.jsx";
 import useEscritorio from "../hooks/useEscritorio.js";
 import { rutaLote } from "../componentes/elaboracion.js";
 
@@ -44,6 +44,7 @@ export default function Produccion() {
   const [lista, setLista] = useState(null);
   const [guardados, setGuardados] = useState(null);
   const [error, setError] = useState("");
+  const [orden, setOrden] = useState(null);
 
   useEffect(() => {
     if (vista === "guardados") {
@@ -108,8 +109,11 @@ export default function Produccion() {
                 {vista === "todas" && ` · ${internas} ${internas === 1 ? "interna" : "internas"}, ${lista.length - internas} ${lista.length - internas === 1 ? "final" : "finales"}`}
               </p>
             )}
-            {lista && lista.length > 0 && escritorio && <Tabla columnas={COLUMNAS} filas={lista} clave={(p) => `${p.clase}-${p.id}`} onFila={ir} etiqueta="Producción" />}
-            {lista && lista.length > 0 && !escritorio && lista.map((p) => (
+            {lista && lista.length > 0 && escritorio && (
+              <Tabla columnas={COLUMNAS} filas={ordenar(lista, COLUMNAS, orden)} orden={orden} onOrden={setOrden} clave={(p) => `${p.clase}-${p.id}`} onFila={ir} etiqueta="Producción" />
+            )}
+            {lista && lista.length > 0 && !escritorio && <SelectorOrden columnas={COLUMNAS} orden={orden} onOrden={setOrden} />}
+            {lista && lista.length > 0 && !escritorio && ordenar(lista, COLUMNAS, orden).map((p) => (
               <button key={`${p.clase}-${p.id}`} type="button" className="etiqueta" onClick={() => ir(p)}>
                 <div style={{ minWidth: 0 }}>
                   <div className="producto">{p.producto}</div>

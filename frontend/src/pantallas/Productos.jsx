@@ -5,22 +5,32 @@ import { Aviso, Cargando, Hoja, Opciones, useSesion, euros, fecha } from "../com
 import { normal } from "../componentes/Autocompletar.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import Filtros, { filtrosVacios } from "../componentes/Filtros.jsx";
-import Tabla from "../componentes/Tabla.jsx";
+import Tabla, { ordenar, SelectorOrden } from "../componentes/Tabla.jsx";
+import { ResumenAlergenos } from "../componentes/Alergenos.jsx";
+import { FICHAS_TECNICAS } from "../componentes/fase.js";
 import useEscritorio from "../hooks/useEscritorio.js";
+
+/** Alérgenos y trazas de un producto: los de todas sus marcas. */
+function alergenosDe(p) {
+  const a = new Set(p.marcas.flatMap((m) => m.alergenos || []));
+  const t = new Set(p.marcas.flatMap((m) => m.trazas || []).filter((x) => !a.has(x)));
+  return { alergenos: [...a], trazas: [...t] };
+}
 
 const CONSERVACION = { ambiente: "Ambiente", refrigerado: "Refrigerado", congelado: "Congelado" };
 const ir = (p) => (window.location.hash = `/productos/${p.id}`);
 
 const COLUMNAS = [
   { titulo: "Producto", ajustar: true, celda: (p) => <strong>{p.nombre}</strong>, orden: (p) => p.nombre },
-  { titulo: "Marcas", ajustar: true, celda: (p) => (p.marcas.length ? p.marcas.map((m) => m.nombre).join(", ") : <span className="suave">Sin marcas</span>) },
+  { titulo: "Marcas", ajustar: true, celda: (p) => (p.marcas.length ? p.marcas.map((m) => m.nombre).join(", ") : <span className="suave">Sin marcas</span>), orden: (p) => p.marcas.map((m) => m.nombre).join(", ") },
   { titulo: "Categoría", ajustar: true, celda: (p) => p.categoria || "—", orden: (p) => p.categoria || "" },
-  { titulo: "Ud.", celda: (p) => p.unidad_medida, ancho: 60 },
+  { titulo: "Ud.", celda: (p) => p.unidad_medida, orden: (p) => p.unidad_medida, ancho: 60 },
   { titulo: "Conservación", celda: (p) => CONSERVACION[p.conservacion] || "—", orden: (p) => p.conservacion || "" },
-  { titulo: "Último precio", num: true, celda: (p) => (p.ultimo_precio != null ? `${euros(p.ultimo_precio)}/${p.unidad_medida}` : "—") },
-  { titulo: "Fichas", num: true, celda: (p) => { const n = p.marcas.filter((m) => m.tiene_ficha).length; return n ? <span className="fila" style={{ justifyContent: "flex-end", gap: 4 }}><FileText size={16} aria-hidden />{n}</span> : "—"; } },
+  { titulo: "Alérgenos", ajustar: true, celda: (p) => <ResumenAlergenos alergenos={alergenosDe(p).alergenos} trazas={alergenosDe(p).trazas} />, orden: (p) => alergenosDe(p).alergenos.length * 100 + alergenosDe(p).trazas.length },
+  { titulo: "Último precio", num: true, celda: (p) => (p.ultimo_precio != null ? `${euros(p.ultimo_precio)}/${p.unidad_medida}` : "—"), orden: (p) => p.ultimo_precio ?? -1 },
+  ...(FICHAS_TECNICAS ? [{ titulo: "Fichas", num: true, celda: (p) => { const n = p.marcas.filter((m) => m.tiene_ficha).length; return n ? <span className="fila" style={{ justifyContent: "flex-end", gap: 4 }}><FileText size={16} aria-hidden />{n}</span> : "—"; }, orden: (p) => p.marcas.filter((m) => m.tiene_ficha).length }] : []),
   { titulo: "Alta", celda: (p) => fecha(p.creado_en), orden: (p) => p.creado_en },
-  { titulo: "Estado", celda: (p) => (p.activo ? <span className="distintivo verde">Activo</span> : <span className="distintivo">De baja</span>) },
+  { titulo: "Estado", celda: (p) => (p.activo ? <span className="distintivo verde">Activo</span> : <span className="distintivo">De baja</span>), orden: (p) => p.activo },
 ];
 
 /** Productos: todos los ingredientes y materias primas que entran en el obrador. */
@@ -31,6 +41,7 @@ export default function Productos() {
   const [error, setError] = useState("");
   const [f, setF] = useState(filtrosVacios);
   const [alta, setAlta] = useState(false);
+  const [orden, setOrden] = useState(null);
 
   useEffect(() => {
     api.get("/catalogo/productos?tipo=materia_prima").then(({ productos }) => setLista(productos)).catch((e) => setError(e.message));
@@ -63,10 +74,11 @@ export default function Productos() {
           <div className="vacio panel"><p>{filtrando ? "Nada coincide con los filtros." : "Aún no hay productos. Añade los ingredientes que compras habitualmente."}</p></div>
         )}
         {filtrados.length > 0 && <p className="suave pequeno">{filtrados.length} {filtrados.length === 1 ? "producto" : "productos"}</p>}
-        {filtrados.length > 0 && escritorio && <Tabla columnas={COLUMNAS} filas={filtrados} onFila={ir} etiqueta="Productos" />}
+        {filtrados.length > 0 && escritorio && <Tabla columnas={COLUMNAS} filas={ordenar(filtrados, COLUMNAS, orden)} orden={orden} onOrden={setOrden} onFila={ir} etiqueta="Productos" />}
+        {filtrados.length > 0 && !escritorio && <SelectorOrden columnas={COLUMNAS} orden={orden} onOrden={setOrden} textoDefecto="Orden: alfabético" />}
         {filtrados.length > 0 && !escritorio && (
           <ul className="lista">
-            {filtrados.map((p) => {
+            {ordenar(filtrados, COLUMNAS, orden).map((p) => {
               const fichas = p.marcas.filter((m) => m.tiene_ficha).length;
               return (
                 <li key={p.id}>
@@ -81,7 +93,7 @@ export default function Productos() {
                       <span className="distintivo">{p.unidad_medida}</span>
                       {p.ultimo_precio != null && <div className="pequeno suave numero">{euros(p.ultimo_precio)}/{p.unidad_medida}</div>}
                     </span>
-                    {fichas > 0 && <FileText size={18} aria-label={`${fichas} ficha(s) técnica(s)`} className="suave" />}
+                    {FICHAS_TECNICAS && fichas > 0 && <FileText size={18} aria-label={`${fichas} ficha(s) técnica(s)`} className="suave" />}
                     {!p.activo && <span className="distintivo">De baja</span>}
                     <ChevronRight size={20} aria-hidden className="suave" />
                   </button>

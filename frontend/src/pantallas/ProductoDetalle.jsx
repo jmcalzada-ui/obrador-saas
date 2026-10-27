@@ -4,12 +4,9 @@ import { api, leerBase64 } from "../api.js";
 import { Aviso, Campo, Cargando, Hoja, Opciones, useSesion, useToast, euros, fecha, aNumero } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 
-export const ALERGENOS = [
-  ["gluten", "Gluten"], ["crustaceos", "Crustáceos"], ["huevo", "Huevo"], ["pescado", "Pescado"], ["cacahuetes", "Cacahuetes"],
-  ["soja", "Soja"], ["leche", "Leche"], ["frutos_cascara", "Frutos de cáscara"], ["apio", "Apio"], ["mostaza", "Mostaza"],
-  ["sesamo", "Sésamo"], ["sulfitos", "Sulfitos"], ["altramuces", "Altramuces"], ["moluscos", "Moluscos"],
-];
-const nombreAlergeno = Object.fromEntries(ALERGENOS);
+import SelectorAlergenos, { ResumenAlergenos } from "../componentes/Alergenos.jsx";
+import { FICHAS_TECNICAS } from "../componentes/fase.js";
+
 const CONSERVACION = { ambiente: "Ambiente", refrigerado: "Refrigerado", congelado: "Congelado" };
 
 export default function ProductoDetalle({ id }) {
@@ -71,7 +68,7 @@ export default function ProductoDetalle({ id }) {
                   <h2>Marcas</h2>
                   {puede("registrar") && <button className="boton" onClick={() => setMarca({})}><Plus size={18} aria-hidden /> Añadir marca</button>}
                 </div>
-                {producto.marcas.length === 0 && <p className="suave">Añade las marcas que compras de este producto, con su ficha técnica y precio de referencia.</p>}
+                {producto.marcas.length === 0 && <p className="suave">Añade las marcas que compras de este producto, con sus ingredientes, alérgenos y precio de referencia.</p>}
                 {producto.marcas.map((m) => (
                   <TarjetaMarca key={m.id} m={m} unidad={producto.unidad_medida} puedeEditar={puede("catalogo")} puedeSubir={puede("registrar")}
                     onEditar={() => setMarca(m)} onCambio={cargar} />
@@ -120,7 +117,7 @@ function TarjetaMarca({ m, unidad, puedeEditar, puedeSubir, onEditar, onCambio }
       <div className="fila entre">
         <div style={{ minWidth: 0 }}>
           <strong>{m.nombre}</strong>
-          <div className="suave pequeno">{[m.formato, m.proveedor].filter(Boolean).join(" · ") || "Sin formato ni proveedor"}</div>
+          {m.formato && <div className="suave pequeno">{m.formato}</div>}
         </div>
         {puedeEditar && <button className="boton-icono" aria-label={`Editar ${m.nombre}`} onClick={onEditar}><Pencil size={20} /></button>}
       </div>
@@ -128,9 +125,10 @@ function TarjetaMarca({ m, unidad, puedeEditar, puedeSubir, onEditar, onCambio }
         <dt>Precio ref.</dt>
         <dd>{m.precio_referencia != null ? `${euros(m.precio_referencia)} / ${unidad}` : "—"}{m.precio_ref_fecha && <span className="suave pequeno"> · {fecha(m.precio_ref_fecha)}</span>}</dd>
         <dt>Último pagado</dt><dd>{m.ultimo_precio != null ? `${euros(m.ultimo_precio)} / ${unidad}` : "—"}</dd>
-        <dt>Alérgenos</dt><dd>{m.alergenos?.length ? m.alergenos.map((a) => nombreAlergeno[a] || a).join(", ") : "Ninguno indicado"}</dd>
+        <dt>Alérgenos</dt><dd><ResumenAlergenos alergenos={m.alergenos} trazas={m.trazas} /></dd>
+        {m.composicion && <><dt>Ingredientes</dt><dd style={{ fontWeight: 400 }}>{m.composicion}</dd></>}
       </dl>
-      <div className="fila" style={{ flexWrap: "wrap" }}>
+      {FICHAS_TECNICAS && <div className="fila" style={{ flexWrap: "wrap" }}>
         {m.tiene_ficha && (
           <button className="boton" onClick={() => api.abrirArchivo(`/catalogo/marcas/${m.id}/ficha`).catch((e) => setError(e.message))}>
             <FileText size={18} aria-hidden /> Ver ficha técnica
@@ -144,7 +142,7 @@ function TarjetaMarca({ m, unidad, puedeEditar, puedeSubir, onEditar, onCambio }
             <input ref={entrada} type="file" accept="application/pdf" hidden onChange={subir} />
           </>
         )}
-      </div>
+      </div>}
       {error && <Aviso tipo="error">{error}</Aviso>}
     </div>
   );
@@ -152,19 +150,17 @@ function TarjetaMarca({ m, unidad, puedeEditar, puedeSubir, onEditar, onCambio }
 
 function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
   const nueva = !m.id;
-  const [proveedores, setProveedores] = useState([]);
   const [f, setF] = useState({
-    nombre: m.nombre || "", formato: m.formato || "", proveedor_id: m.proveedor_id || "",
+    nombre: m.nombre || "", formato: m.formato || "",
     precio_referencia: m.precio_referencia != null ? String(m.precio_referencia).replace(".", ",") : "",
-    alergenos: m.alergenos || [], composicion: m.composicion || "",
+    alergenos: m.alergenos || [], trazas: m.trazas || [], composicion: m.composicion || "",
   });
   const [error, setError] = useState("");
-  useEffect(() => { api.get("/catalogo/proveedores").then((d) => setProveedores(d.proveedores)).catch(() => {}); }, []);
 
   async function guardar() {
     const precio = aNumero(f.precio_referencia);
     if (Number.isNaN(precio)) return setError("El precio no es un número.");
-    const cuerpo = { nombre: f.nombre.trim(), formato: f.formato.trim() || null, proveedor_id: f.proveedor_id || null, precio_referencia: precio, alergenos: f.alergenos, composicion: f.composicion };
+    const cuerpo = { nombre: f.nombre.trim(), formato: f.formato.trim() || null, precio_referencia: precio, alergenos: f.alergenos, trazas: f.trazas, composicion: f.composicion };
     try {
       if (nueva) await api.post(`/catalogo/productos/${productoId}/marcas`, cuerpo);
       else await api.patch(`/catalogo/marcas/${m.id}`, cuerpo);
@@ -174,7 +170,6 @@ function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
   async function borrar() {
     try { await api.delete(`/catalogo/marcas/${m.id}`); onGuardado(); } catch (e) { setError(e.message); }
   }
-  const alternar = (a) => setF((x) => ({ ...x, alergenos: x.alergenos.includes(a) ? x.alergenos.filter((y) => y !== a) : [...x.alergenos, a] }));
 
   return (
     <Hoja titulo={nueva ? "Añadir marca" : `Editar ${m.nombre}`} onCerrar={onCerrar}>
@@ -182,24 +177,11 @@ function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
       <Campo etiqueta="Formato" id="m-formato" ayuda="p. ej. saco 25 kg, caja 6 × 1 l">
         <input id="m-formato" className="entrada" value={f.formato} onChange={(e) => setF({ ...f, formato: e.target.value })} />
       </Campo>
-      <Campo etiqueta="Proveedor habitual" id="m-prov">
-        <select id="m-prov" className="entrada" value={f.proveedor_id} onChange={(e) => setF({ ...f, proveedor_id: e.target.value })}>
-          <option value="">Sin indicar</option>
-          {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
-      </Campo>
       <Campo etiqueta={`Precio de referencia (€ / ${unidad}, sin impuestos)`} id="m-precio">
         <input id="m-precio" className="entrada" inputMode="decimal" value={f.precio_referencia} onChange={(e) => setF({ ...f, precio_referencia: e.target.value })} />
       </Campo>
-      <div className="campo">
-        <span style={{ fontWeight: 700 }}>Alérgenos</span>
-        <div className="opciones" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
-          {ALERGENOS.map(([k, t]) => (
-            <button key={k} type="button" className="opcion" aria-pressed={f.alergenos.includes(k)} onClick={() => alternar(k)} style={{ fontWeight: 400 }}>{t}</button>
-          ))}
-        </div>
-      </div>
-      <Campo etiqueta="Ingredientes (según la ficha técnica)" id="m-comp">
+      <SelectorAlergenos alergenos={f.alergenos} trazas={f.trazas} onCambio={(x) => setF((y) => ({ ...y, ...x }))} />
+      <Campo etiqueta="Ingredientes (según la ficha técnica o la etiqueta)" id="m-comp" ayuda="Se usan para la lista de ingredientes de las producciones que lleven este producto.">
         <textarea id="m-comp" className="entrada" value={f.composicion} onChange={(e) => setF({ ...f, composicion: e.target.value })} />
       </Campo>
       {error && <Aviso tipo="error">{error}</Aviso>}
@@ -210,7 +192,7 @@ function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
 }
 
 function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
-  const preparado = p.tipo === "preparado";
+  const preparado = p.tipo === "preparado" || p.tipo === "elaborado";
   const t = (v) => (v == null ? "" : String(v).replace(".", ","));
   const [f, setF] = useState({
     nombre: p.nombre, unidad_medida: p.unidad_medida, conservacion: p.conservacion || "ambiente", categoria: p.categoria || "",

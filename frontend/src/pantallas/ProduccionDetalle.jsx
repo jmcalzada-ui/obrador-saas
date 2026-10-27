@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Pencil, Trash2, PackageX, PackageCheck, Snowflake, ChevronRight } from "lucide-react";
 import { api } from "../api.js";
-import { Aviso, Campo, Cargando, Hoja, useSesion, useToast, num, fecha, aNumero } from "../componentes/ui.jsx";
+import { Aviso, Cargando, Hoja, useSesion, useToast, num, fecha, aNumero } from "../componentes/ui.jsx";
 import ControlTermico, { aISO, horaAhora, evaluar } from "../componentes/ControlTermico.jsx";
 import EstadoTermico from "../componentes/EstadoTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
@@ -41,7 +41,7 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
   return (
     <>
       <Cabecera titulo={cfg.titulo} volver="/produccion"
-        accion={p && puede("editar") && <button className="boton-icono" aria-label="Editar" onClick={() => setHoja("editar")}><Pencil size={22} /></button>} />
+        accion={p && puede("editar") && <button className="boton-icono" aria-label="Editar" onClick={() => (window.location.hash = `${cfg.rutaFicha}/${id}/editar`)}><Pencil size={22} /></button>} />
       <main className="contenido">
         {error && <Aviso tipo="error">{error}</Aviso>}
         {!datos && !error && <Cargando />}
@@ -129,6 +129,9 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
               )}
             </section>}
 
+            <ListaIngredientes declaracion={datos.declaracion} puedeEditar={puede("editar")}
+              guardar={async (texto) => { await api.patch(`${cfg.api}/${id}`, { declaracion_ingredientes: texto }); toast(texto == null ? "Lista automática" : "Lista de ingredientes guardada"); cargar(); }} />
+
             {(puede("editar") || puede("borrar")) && (
               <div className="pila">
                 {puede("editar") && (
@@ -144,7 +147,6 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
       </main>
 
       {hoja === "abatimiento" && <CompletarAbatimiento cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Abatimiento registrado"); cargar(); }} />}
-      {hoja === "editar" && <EditarPreparado cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Cambios guardados"); cargar(); }} />}
       {hoja === "borrar" && (
         <Hoja titulo="¿Eliminar este lote?" onCerrar={() => setHoja(null)}>
           <p>Se borrará el lote {p.num_lote} con sus ingredientes y controles. No se puede deshacer.</p>
@@ -188,46 +190,51 @@ function CompletarAbatimiento({ cfg, p, onCerrar, onHecho }) {
   );
 }
 
-function EditarPreparado({ cfg, p, onCerrar, onHecho }) {
-  const fechaBase = p.fecha;
-  const [f, setF] = useState({ num_lote: p.num_lote, cantidad: txt(p.cantidad), caducidad: p.caducidad || "", responsable: p.responsable || "", observaciones: p.observaciones || "", unidades: p.unidades != null ? String(p.unidades) : "" });
-  const [v, setV] = useState({
-    coccion_temp: txt(p.coccion_temp), coccion_minutos: txt(p.coccion_minutos), abat_temp_inicio: txt(p.abat_temp_inicio),
-    abat_hora_inicio: horaInput(p.abat_hora_inicio), abat_temp_fin: txt(p.abat_temp_fin), abat_hora_fin: horaInput(p.abat_hora_fin),
-    medida_correctora: p.medida_correctora || "",
-  });
+/**
+ * Lista de ingredientes del lote, lista para la etiqueta: se rellena sola con
+ * los ingredientes usados (en orden de peso, con el % de los principales y
+ * la composición de cada uno) y se puede retocar a mano.
+ */
+function ListaIngredientes({ declaracion, puedeEditar, guardar }) {
+  const ajustada = declaracion?.ajustada;
+  const valorInicial = ajustada ?? declaracion?.auto ?? "";
+  const [texto, setTexto] = useState(valorInicial);
+  const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
-  async function guardar() {
-    const cuerpo = { num_lote: f.num_lote.trim(), cantidad: aNumero(f.cantidad), caducidad: f.caducidad || null, responsable: f.responsable.trim(), observaciones: f.observaciones.trim() };
-    if (!(cuerpo.cantidad > 0)) return setError("Indica una cantidad mayor que 0.");
-    if (cfg.conUnidades) {
-      cuerpo.unidades = f.unidades.trim() ? aNumero(f.unidades) : null;
-      if (cuerpo.unidades != null && !Number.isInteger(cuerpo.unidades)) return setError("Las unidades deben ser un número entero.");
-    }
-    if (p.proceso_termico) {
-      const fb = (p.abat_hora_inicio || `${fechaBase}T12:00:00`).slice(0, 10);
-      const ini = aISO(fb, v.abat_hora_inicio);
-      let fin = v.abat_hora_fin ? aISO(fb, v.abat_hora_fin) : null;
-      if (ini && fin && new Date(fin) < new Date(ini)) fin = new Date(new Date(fin).getTime() + 86400000).toISOString();
-      Object.assign(cuerpo, {
-        coccion_temp: aNumero(v.coccion_temp), coccion_minutos: aNumero(v.coccion_minutos), abat_temp_inicio: aNumero(v.abat_temp_inicio),
-        abat_hora_inicio: ini, abat_temp_fin: aNumero(v.abat_temp_fin), abat_hora_fin: fin, medida_correctora: v.medida_correctora.trim(),
-      });
-      if (Object.values(cuerpo).some((x) => Number.isNaN(x))) return setError("Revisa los valores numéricos.");
-    }
-    try { await api.patch(`${cfg.api}/${p.id}`, cuerpo); onHecho(); } catch (e) { setError(e.message); }
+  const toast = useToast();
+  useEffect(() => { setTexto(valorInicial); }, [valorInicial]);
+  const cambiado = texto.trim() !== valorInicial.trim();
+
+  async function enviar(valor) {
+    setGuardando(true);
+    setError("");
+    try { await guardar(valor); } catch (e) { setError(e.message); } finally { setGuardando(false); }
   }
+  async function copiar() {
+    try { await navigator.clipboard.writeText(texto); toast("Copiado"); } catch { setError("No se ha podido copiar."); }
+  }
+
   return (
-    <Hoja titulo="Editar lote" onCerrar={onCerrar}>
-      <Campo etiqueta="Nº de lote" id="ep-lote"><input id="ep-lote" className="entrada grande" value={f.num_lote} onChange={(e) => setF({ ...f, num_lote: e.target.value })} /></Campo>
-      <Campo etiqueta={`Cantidad obtenida (${p.unidad})`} id="ep-cant"><input id="ep-cant" className="entrada" inputMode="decimal" value={f.cantidad} onChange={(e) => setF({ ...f, cantidad: e.target.value })} /></Campo>
-      {cfg.conUnidades && <Campo etiqueta="Unidades o raciones" id="ep-uds"><input id="ep-uds" className="entrada" inputMode="numeric" value={f.unidades} onChange={(e) => setF({ ...f, unidades: e.target.value })} /></Campo>}
-      <Campo etiqueta="Caducidad" id="ep-cad"><input id="ep-cad" className="entrada" type="date" value={f.caducidad} onChange={(e) => setF({ ...f, caducidad: e.target.value })} /></Campo>
-      <Campo etiqueta="Responsable" id="ep-resp"><input id="ep-resp" className="entrada" value={f.responsable} onChange={(e) => setF({ ...f, responsable: e.target.value })} /></Campo>
-      {p.proceso_termico && <ControlTermico obj={p} v={v} fecha={fechaBase} cambiar={(x) => setV((y) => ({ ...y, ...x }))} />}
-      <Campo etiqueta="Observaciones" id="ep-obs"><textarea id="ep-obs" className="entrada" value={f.observaciones} onChange={(e) => setF({ ...f, observaciones: e.target.value })} /></Campo>
+    <section className="panel pila">
+      <div className="fila entre" style={{ flexWrap: "wrap" }}>
+        <h2>Lista de ingredientes</h2>
+        <span className={`distintivo ${ajustada ? "ambar" : "verde"}`}>{ajustada ? "Ajustada a mano" : "Automática"}</span>
+      </div>
+      <p className="suave pequeno">
+        Se rellena sola con los ingredientes usados en el lote, de más a menos peso, con el % de los que pesan un 10 % o más y la composición
+        que figura en la ficha de cada producto (marca). Al final, los alérgenos y las trazas.
+      </p>
+      {puedeEditar ? (
+        <textarea className="entrada declaracion" aria-label="Lista de ingredientes" value={texto} onChange={(e) => setTexto(e.target.value)} rows={6} />
+      ) : (
+        <p className="declaracion-texto">{texto || "Sin ingredientes."}</p>
+      )}
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <button className="boton principal grande bloque" onClick={guardar}>Guardar cambios</button>
-    </Hoja>
+      <div className="fila" style={{ flexWrap: "wrap" }}>
+        {puedeEditar && <button className="boton principal" disabled={!cambiado || guardando} onClick={() => enviar(texto.trim() || null)}>Guardar lista</button>}
+        {puedeEditar && ajustada && <button className="boton" disabled={guardando} onClick={() => enviar(null)}>Volver a la automática</button>}
+        <button className="boton" onClick={copiar} disabled={!texto}>Copiar</button>
+      </div>
+    </section>
   );
 }

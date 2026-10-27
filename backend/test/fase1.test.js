@@ -76,3 +76,67 @@ test("logotipo: el gestor lo sube (PNG o JPEG), se lee y sale en los informes", 
   assert.equal((await O.api.delete("/api/obrador/logo")).status, 204);
   assert.equal((await O.api.get("/api/obrador/logo")).status, 404);
 });
+
+test("una entrada se puede editar por completo, también el producto y la marca", async () => {
+  const azucar = (await O.api.post("/api/catalogo/productos", { nombre: "Azúcar", unidad_medida: "kg" })).body.producto;
+  const marca = (await O.api.post(`/api/catalogo/productos/${azucar.id}/marcas`, { nombre: "Azucarera", alergenos: [], trazas: ["sulfitos"] })).body.marca;
+  assert.deepEqual(marca.trazas, ["sulfitos"]);
+  const rec = (await O.api.post("/api/recepciones", { fecha: "2026-10-15", producto_id: leche.id, cantidad: 3, num_lote: "MAL-1" })).body.recepcion;
+  const bech2 = (await O.api.post("/api/preparados", { producto_id: bechamel.producto_id, fecha: "2026-10-15", num_lote: "BE-2", cantidad: 2,
+    ingredientes: [{ origen: "recepcion", lote_id: rec.id, cantidad: 1 }] })).body.preparado;
+  // Marca de otro producto: no
+  assert.equal((await O.api.patch(`/api/recepciones/${rec.id}`, { marca_id: marca.id })).status, 400);
+  const r = await O.api.patch(`/api/recepciones/${rec.id}`, { producto_id: azucar.id, marca_id: marca.id, num_lote: "AZ-1", fecha: "2026-10-14", estado_entrada: "conforme_con_incidencia" });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.recepcion.producto, "Azúcar");
+  assert.equal(r.body.recepcion.unidad, "kg");
+  assert.equal(r.body.recepcion.marca, "Azucarera");
+  const det = (await O.api.get(`/api/preparados/${bech2.id}`)).body;
+  assert.equal(det.ingredientes[0].producto, "Azúcar", "la trazabilidad sigue al lote corregido");
+  assert.equal(det.ingredientes[0].num_lote, "AZ-1");
+});
+
+test("lista de ingredientes: orden por peso, % de los principales, composición de la marca, alérgenos y trazas", async () => {
+  const pan = (await O.api.post("/api/catalogo/productos", { nombre: "Pan rallado", unidad_medida: "kg" })).body.producto;
+  await O.api.post(`/api/catalogo/productos/${pan.id}/marcas`, { nombre: "Panes Sur", composicion: "Ingredientes: harina de trigo, agua, sal.", alergenos: ["gluten"], trazas: ["sesamo"] });
+  const recPan = (await O.api.post("/api/recepciones", { fecha: "2026-10-16", producto_id: pan.id, marca_id: (await O.api.get("/api/catalogo/productos?tipo=materia_prima")).body.productos.find((p) => p.id === pan.id).marcas[0].id, cantidad: 10, num_lote: "PR-1" })).body.recepcion;
+  const f = (await O.api.post("/api/producciones", {
+    nuevo: { nombre: "Croquetas de pollo", unidad_medida: "kg", proceso_termico: false },
+    fecha: "2026-10-16", num_lote: "CP-1", cantidad: 10,
+    ingredientes: [
+      { origen: "preparado", lote_id: bechamel.id, cantidad: 7 },
+      { origen: "recepcion", lote_id: recPan.id, cantidad: 2 },
+      { origen: "manual", producto_id: harina.id, num_lote: "", cantidad: 500 / 1000 },
+      { origen: "manual", producto_id: leche.id, num_lote: "", cantidad: 0.5 },
+    ],
+  })).body.produccion;
+  const d = (await O.api.get(`/api/producciones/${f.id}`)).body.declaracion;
+  assert.equal(d.ajustada, null);
+  assert.match(d.auto, /^Ingredientes: bechamel 70 % \(harina 85 %, leche 15 %\), pan rallado 20 % \(harina de trigo, agua, sal\), harina, leche\./);
+  assert.match(d.auto, /Contiene: GLUTEN\./);
+  assert.match(d.auto, /Puede contener trazas de: sésamo\./);
+  // Se puede ajustar a mano y volver a la automática
+  assert.equal((await O.api.patch(`/api/producciones/${f.id}`, { declaracion_ingredientes: "Ingredientes: a mano." })).status, 200);
+  assert.equal((await O.api.get(`/api/producciones/${f.id}`)).body.declaracion.ajustada, "Ingredientes: a mano.");
+  await O.api.patch(`/api/producciones/${f.id}`, { declaracion_ingredientes: null });
+  assert.equal((await O.api.get(`/api/producciones/${f.id}`)).body.declaracion.ajustada, null);
+});
+
+test("al editar un lote se puede cambiar entre producción interna y final", async () => {
+  // Bechamel (interna) ya se ha usado en croquetas: no puede pasar a final
+  const no = await O.api.patch(`/api/preparados/${bechamel.id}`, { interna: false });
+  assert.equal(no.status, 409);
+  // Una final pasa a interna con sus ingredientes, y vuelve
+  const cr = (await O.api.get("/api/produccion?interna=0&q=croquetas")).body.produccion.find((p) => p.num_lote === "CR-1");
+  const a = await O.api.patch(`/api/producciones/${cr.id}`, { interna: true, cantidad: 9 });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  assert.equal(a.body.clase, "intermedia");
+  assert.equal(a.body.preparado.cantidad, 9);
+  const det = (await O.api.get(`/api/preparados/${cr.id}`)).body;
+  assert.equal(det.ingredientes.length, 2);
+  assert.equal((await O.api.get(`/api/producciones/${cr.id}`)).status, 404);
+  const b = await O.api.patch(`/api/preparados/${cr.id}`, { interna: false, unidades: 200 });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.equal(b.body.produccion.unidades, 200);
+  assert.equal((await O.api.get(`/api/producciones/${cr.id}`)).body.ingredientes.length, 2);
+});

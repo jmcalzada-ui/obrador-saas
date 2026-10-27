@@ -30,7 +30,7 @@ catalogoRouter.get(
                   WHERE r.producto_id = p.id AND r.precio_total IS NOT NULL ORDER BY r.fecha DESC, r.creado_en DESC LIMIT 1) AS ultimo_precio,
                 COALESCE((
                   SELECT json_agg(json_build_object(
-                           'id', m.id, 'nombre', m.nombre, 'unidad', m.unidad, 'alergenos', m.alergenos,
+                           'id', m.id, 'nombre', m.nombre, 'unidad', m.unidad, 'alergenos', m.alergenos, 'trazas', m.trazas,
                            'composicion', m.composicion, 'activo', m.activo, 'formato', m.formato,
                            'proveedor_id', m.proveedor_id, 'proveedor', pr.nombre,
                            'precio_referencia', m.precio_referencia, 'precio_ref_fecha', m.precio_ref_fecha,
@@ -59,6 +59,7 @@ const esquemaProducto = z.object({
   tipo: z.enum(["materia_prima", "preparado", "elaborado"]).default("materia_prima"),
   unidad_medida: z.enum(UNIDADES).default("kg"),
   alergenos: z.array(z.enum(ALERGENOS)).default([]),
+  trazas: z.array(z.enum(ALERGENOS)).default([]),
   categoria: z.string().trim().max(60).nullable().optional(),
   conservacion: z.enum(["ambiente", "refrigerado", "congelado"]).nullable().optional(),
   proceso_termico: z.boolean().nullable().optional(),
@@ -73,17 +74,19 @@ const esquemaProducto = z.object({
 export const OBJETIVOS_TERMICOS = { coccion_temp_min: 75, abatimiento_temp_max: 10, abatimiento_minutos_max: 120 };
 
 export async function insertarProducto(c, obradorId, d) {
-  const termico = d.tipo === "preparado" && d.proceso_termico === true;
+  // Producción interna (preparado) y final (elaborado) pueden llevar proceso térmico.
+  const elaborado = d.tipo === "preparado" || d.tipo === "elaborado";
+  const termico = elaborado && d.proceso_termico === true;
   const { rows } = await c.query(
     `INSERT INTO productos (obrador_id, nombre, tipo, unidad_medida, alergenos, categoria, conservacion, proceso_termico,
-                            coccion_temp_min, abatimiento_temp_max, abatimiento_minutos_max, vida_util_dias)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+                            coccion_temp_min, abatimiento_temp_max, abatimiento_minutos_max, vida_util_dias, trazas)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
     [obradorId, d.nombre, d.tipo, d.unidad_medida, d.alergenos ?? [], d.categoria ?? null, d.conservacion ?? null,
-     d.tipo === "preparado" ? Boolean(d.proceso_termico) : null,
+     elaborado ? Boolean(d.proceso_termico) : null,
      termico ? d.coccion_temp_min ?? OBJETIVOS_TERMICOS.coccion_temp_min : null,
      termico ? d.abatimiento_temp_max ?? OBJETIVOS_TERMICOS.abatimiento_temp_max : null,
      termico ? d.abatimiento_minutos_max ?? OBJETIVOS_TERMICOS.abatimiento_minutos_max : null,
-     d.vida_util_dias ?? null]
+     d.vida_util_dias ?? null, d.trazas ?? []]
   );
   return { ...rows[0], marcas: [] };
 }
@@ -146,6 +149,7 @@ const esquemaMarca = z.object({
   nombre: z.string().trim().min(1, "Escribe el nombre de la marca.").max(120),
   composicion: z.string().max(4000).default(""),
   alergenos: z.array(z.enum(ALERGENOS)).default([]),
+  trazas: z.array(z.enum(ALERGENOS)).default([]),
   unidad: z.enum(UNIDADES).nullable().optional(),
   formato: z.string().trim().max(80).nullable().optional(),
   proveedor_id: z.string().uuid().nullable().optional(),
@@ -160,10 +164,10 @@ catalogoRouter.post(
     if (!d) return;
     const marca = await db(req, async (c) => {
       const { rows } = await c.query(
-        `INSERT INTO marcas (obrador_id, producto_id, nombre, composicion, alergenos, unidad, formato, proveedor_id,
+        `INSERT INTO marcas (obrador_id, producto_id, nombre, composicion, alergenos, trazas, unidad, formato, proveedor_id,
                              precio_referencia, precio_ref_fecha)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, CASE WHEN $9::numeric IS NULL THEN NULL ELSE current_date END) RETURNING *`,
-        [req.usuario.obrador_id, req.params.id, d.nombre, d.composicion, d.alergenos, d.unidad ?? null, d.formato ?? null,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, CASE WHEN $10::numeric IS NULL THEN NULL ELSE current_date END) RETURNING *`,
+        [req.usuario.obrador_id, req.params.id, d.nombre, d.composicion, d.alergenos, d.trazas, d.unidad ?? null, d.formato ?? null,
          d.proveedor_id ?? null, d.precio_referencia ?? null]
       );
       return { ...rows[0], tiene_ficha: false };

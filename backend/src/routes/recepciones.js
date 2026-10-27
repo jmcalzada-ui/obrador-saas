@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requirePermiso, db } from "../auth/middleware.js";
 import { ruta, validar } from "../lib/utiles.js";
+import { config } from "../config.js";
 
 export const recepcionesRouter = Router();
 recepcionesRouter.use(requireAuth);
@@ -126,31 +127,52 @@ recepcionesRouter.post(
 );
 
 // Editar lo ya guardado: jefe de producción y gestor (el operario no).
+// Editar una entrada: se puede cambiar cualquier casilla, también el
+// producto, la marca (fabricante) y el proveedor.
 recepcionesRouter.patch(
   "/:id",
   requirePermiso("editar"),
   ruta(async (req, res) => {
-    const d = validar(esquemaRecepcion.partial().omit({ producto_id: true }).extend({ activo: z.boolean().optional() }), req.body, res);
+    const d = validar(esquemaRecepcion.partial().extend({ activo: z.boolean().optional() }), req.body, res);
     if (!d) return;
     if (d.precio_unidad != null && d.precio_total == null && d.cantidad != null) d.precio_total = Math.round(d.precio_unidad * d.cantidad * 100) / 100;
     delete d.precio_unidad;
-    const campos = Object.keys(d).filter((k) => d[k] !== undefined);
-    if (!campos.length) return res.status(400).json({ error: "No hay cambios." });
     const r = await db(req, async (c) => {
-      if (d.cantidad !== undefined) {
+      const { rows: [actual] } = await c.query("SELECT producto_id, marca_id FROM recepciones WHERE id = $1 FOR UPDATE", [req.params.id]);
+      if (!actual) return null;
+      const productoId = d.producto_id ?? actual.producto_id;
+      if (d.producto_id && d.producto_id !== actual.producto_id) {
+        // La unidad la fija el producto.
+        const { rows: [p] } = await c.query("SELECT unidad_medida FROM productos WHERE id = $1 AND tipo = 'materia_prima'", [d.producto_id]);
+        if (!p) return { error: "Ese producto no existe.", status: 400 };
+        d.unidad = p.unidad_medida;
+        if (d.marca_id === undefined) d.marca_id = null;
+      }
+      if (d.marca_id) {
+        const { rowCount } = await c.query("SELECT 1 FROM marcas WHERE id = $1 AND producto_id = $2", [d.marca_id, productoId]);
+        if (!rowCount) return { error: "Esa marca no es de este producto.", status: 400 };
+      }
+      if (config.controlStock && d.cantidad !== undefined) {
         // No se puede bajar la cantidad por debajo de lo ya consumido.
         const { rows: [s] } = await c.query("SELECT cantidad - disponible AS usado FROM stock_lotes WHERE origen = 'recepcion' AND id = $1", [req.params.id]);
-        if (s && d.cantidad < s.usado) return { error: `Ya se han usado ${s.usado} de este lote; la cantidad no puede ser menor.` };
+        if (s && d.cantidad < s.usado) return { error: `Ya se han usado ${s.usado} de este lote; la cantidad no puede ser menor.`, status: 409 };
       }
+      const campos = Object.keys(d).filter((k) => d[k] !== undefined);
+      if (!campos.length) return { error: "No hay cambios.", status: 400 };
       const sets = [...campos.map((k, i) => `${k} = $${i + 2}`), `modificado_por = $${campos.length + 2}`, "modificado_en = now()"].join(", ");
-      const { rowCount } = await c.query(`UPDATE recepciones SET ${sets} WHERE id = $1`, [
-        req.params.id, ...campos.map((k) => d[k]), req.usuario.id,
-      ]);
-      if (!rowCount) return null;
+      await c.query(`UPDATE recepciones SET ${sets} WHERE id = $1`, [req.params.id, ...campos.map((k) => d[k]), req.usuario.id]);
+      // Donde se usó este lote se guarda una copia del producto, el lote y la unidad: se actualiza.
+      if (d.producto_id || d.num_lote !== undefined) {
+        await c.query(
+          `UPDATE consumos co SET producto_id = r.producto_id, num_lote = r.num_lote, unidad = r.unidad
+             FROM recepciones r WHERE r.id = $1 AND co.origen_recepcion = r.id`,
+          [req.params.id]
+        );
+      }
       return { recepcion: (await c.query(`${SELECT} WHERE r.id = $1`, [req.params.id])).rows[0] };
     });
     if (!r) return res.status(404).json({ error: "Recepción no encontrada." });
-    if (r.error) return res.status(409).json({ error: r.error });
+    if (r.error) return res.status(r.status).json({ error: r.error });
     res.json(r);
   })
 );

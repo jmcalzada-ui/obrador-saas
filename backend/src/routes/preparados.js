@@ -15,6 +15,7 @@ import { requireAuth, requirePermiso, db } from "../auth/middleware.js";
 import { ruta, validar } from "../lib/utiles.js";
 import { insertarProducto, UNIDADES } from "./catalogo.js";
 import { config } from "../config.js";
+import { generarDeclaracion } from "../lib/declaracion.js";
 
 /** Estado del control térmico de un lote frente a los objetivos de su producto. */
 export function evaluarTermico(p) {
@@ -38,10 +39,12 @@ const enviarError = (res, e) => res.status(e.status).json({ error: e.message, co
 
 const CONFIG = {
   intermedia: {
+    clave: "intermedia",
     tabla: "preparados", tipo: "preparado", fk: "preparado_id", conStock: true, prefijo: "PI",
     plural: "preparados", singular: "preparado", nombre: "producción intermedia", articulo: "Esta producción intermedia",
   },
   final: {
+    clave: "final",
     tabla: "producciones", tipo: "elaborado", fk: "produccion_id", conStock: false, prefijo: "PF",
     plural: "producciones", singular: "produccion", nombre: "producto final", articulo: "Este producto final",
   },
@@ -55,7 +58,7 @@ export function selectElaboracion(cfg) {
          pp.caducidad, pp.observaciones, pp.activo, ${cfg.conStock ? "s.disponible" : "NULL::numeric AS disponible"},
          p.proceso_termico, p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max,
          pp.coccion_temp, pp.coccion_minutos, pp.abat_temp_inicio, pp.abat_hora_inicio, pp.abat_temp_fin, pp.abat_hora_fin,
-         pp.medida_correctora, pp.creado_en, pp.modificado_en,
+         pp.medida_correctora, pp.declaracion_ingredientes, pp.creado_en, pp.modificado_en,
          uc.nombre AS creado_por_nombre, um.nombre AS modificado_por_nombre
     FROM ${cfg.tabla} pp
     JOIN productos p ON p.id = pp.producto_id
@@ -118,6 +121,31 @@ const camposTermicos = {
   abat_hora_fin: z.string().datetime({ offset: true }).nullable().optional(),
   medida_correctora: z.string().trim().max(1000).optional(),
 };
+
+// Columnas que tienen los dos tipos de lote (para pasar un lote de uno a otro).
+const COLUMNAS_LOTE = ["obrador_id", "fecha", "producto_id", "num_lote", "responsable", "cantidad", "unidad", "observaciones", "activo",
+  "caducidad", "coccion_temp", "coccion_minutos", "abat_temp_inicio", "abat_hora_inicio", "abat_temp_fin", "abat_hora_fin",
+  "medida_correctora", "declaracion_ingredientes", "creado_por", "creado_en"];
+
+/**
+ * Pasa un lote de producción interna a final o al revés, con sus
+ * ingredientes. Una interna que ya se ha usado como ingrediente no puede
+ * pasar a final (se rompería la trazabilidad).
+ */
+async function moverLote(c, id, de, a) {
+  const { rows: [l] } = await c.query(`SELECT * FROM ${de.tabla} WHERE id = $1 FOR UPDATE`, [id]);
+  if (!l) throw fallo("Lote no encontrado.", 404);
+  if (de.clave === "intermedia") {
+    const { rowCount } = await c.query("SELECT 1 FROM consumos WHERE origen_preparado = $1 LIMIT 1", [id]);
+    if (rowCount) throw fallo("Este lote ya se ha usado como ingrediente en otra producción: no puede pasar a producción final.", 409);
+  }
+  const cols = [...COLUMNAS_LOTE, ...(a.tabla === "producciones" ? ["estado"] : [])];
+  const valores = cols.map((k) => (k === "estado" ? "completada" : l[k]));
+  await c.query(`INSERT INTO ${a.tabla} (id, ${cols.join(", ")}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(", ")})`, [id, ...valores]);
+  await c.query(`UPDATE consumos SET ${a.fk} = $1, ${de.fk} = NULL WHERE ${de.fk} = $1`, [id]);
+  await c.query(`DELETE FROM ${de.tabla} WHERE id = $1`, [id]);
+  await c.query("UPDATE productos SET tipo = $2 WHERE id = $1", [l.producto_id, a.tipo]);
+}
 
 function crearRouter(cfg) {
   const router = Router();
@@ -185,7 +213,8 @@ function crearRouter(cfg) {
             [req.params.id]
           ));
         }
-        return { [cfg.singular]: conTermico(lote), ingredientes, usos };
+        const auto = await generarDeclaracion(c, cfg.fk, req.params.id);
+        return { [cfg.singular]: conTermico(lote), ingredientes, usos, declaracion: { auto: auto.texto, ajustada: lote.declaracion_ingredientes } };
       });
       if (!datos) return res.status(404).json({ error: "Lote no encontrado." });
       res.json(datos);
@@ -217,13 +246,13 @@ function crearRouter(cfg) {
    * mientras dura la transacción: dos personas a la vez no pueden gastar
    * el mismo stock dos veces.
    */
-  async function guardarConsumos(c, obradorId, loteId, ingredientes) {
+  async function guardarConsumos(c, obradorId, loteId, ingredientes, dest = cfg) {
     const porLote = new Map();
     for (const i of ingredientes) if (i.origen !== "manual") porLote.set(i.lote_id, { origen: i.origen, cantidad: (porLote.get(i.lote_id)?.cantidad || 0) + i.cantidad });
     const faltas = [];
     const lotes = new Map();
     for (const [origenId, { origen, cantidad }] of porLote) {
-      if (cfg.conStock && origenId === loteId) throw fallo("Un lote no puede usarse a sí mismo como ingrediente.", 400);
+      if (dest.conStock && origenId === loteId) throw fallo("Un lote no puede usarse a sí mismo como ingrediente.", 400);
       const tabla = origen === "recepcion" ? "recepciones" : "preparados";
       const { rows: [bloq] } = await c.query(`SELECT id FROM ${tabla} WHERE id = $1 FOR UPDATE`, [origenId]);
       if (!bloq) throw fallo("Uno de los lotes elegidos no existe.", 400);
@@ -241,14 +270,14 @@ function crearRouter(cfg) {
         const { rows: [p] } = await c.query("SELECT unidad_medida FROM productos WHERE id = $1", [i.producto_id]);
         if (!p) throw fallo("Uno de los ingredientes no está en el catálogo.", 400);
         await c.query(
-          `INSERT INTO consumos (obrador_id, ${cfg.fk}, producto_id, num_lote, cantidad, unidad) VALUES ($1,$2,$3,$4,$5,$6)`,
+          `INSERT INTO consumos (obrador_id, ${dest.fk}, producto_id, num_lote, cantidad, unidad) VALUES ($1,$2,$3,$4,$5,$6)`,
           [obradorId, loteId, i.producto_id, i.num_lote, i.cantidad, p.unidad_medida]
         );
         productos.add(i.producto_id);
       } else {
         const l = lotes.get(i.lote_id);
         await c.query(
-          `INSERT INTO consumos (obrador_id, ${cfg.fk}, origen_recepcion, origen_preparado, producto_id, num_lote, cantidad, unidad)
+          `INSERT INTO consumos (obrador_id, ${dest.fk}, origen_recepcion, origen_preparado, producto_id, num_lote, cantidad, unidad)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
           [obradorId, loteId, i.origen === "recepcion" ? i.lote_id : null, i.origen === "preparado" ? i.lote_id : null,
            l.producto_id, l.num_lote, i.cantidad, l.unidad]
@@ -291,8 +320,10 @@ function crearRouter(cfg) {
           if (d.nuevo) {
             producto = await insertarProducto(c, req.usuario.obrador_id, { ...d.nuevo, tipo: cfg.tipo, alergenos: [] });
           } else {
-            producto = (await c.query("SELECT * FROM productos WHERE id = $1 AND tipo = $2", [d.producto_id, cfg.tipo])).rows[0];
+            producto = (await c.query("SELECT * FROM productos WHERE id = $1 AND tipo IN ('preparado', 'elaborado')", [d.producto_id])).rows[0];
             if (!producto) throw fallo("Ese producto no existe.", 400);
+            // La casilla "producción interna" manda: el nombre guardado recuerda la última elección.
+            if (producto.tipo !== cfg.tipo) await c.query("UPDATE productos SET tipo = $2 WHERE id = $1", [producto.id, cfg.tipo]);
           }
           exigirCorrectora(producto, d);
           const caducidad = d.caducidad ?? (producto.vida_util_dias
@@ -382,36 +413,59 @@ function crearRouter(cfg) {
         responsable: z.string().trim().max(80).optional(),
         observaciones: z.string().max(2000).optional(),
         activo: z.boolean().optional(),
+        // Cambiar entre producción interna y final (el lote pasa a la otra lista).
+        interna: z.boolean().optional(),
+        producto_id: z.string().uuid().optional(),
+        // Lista de ingredientes ajustada a mano (null = volver a la automática).
+        declaracion_ingredientes: z.string().trim().max(4000).nullable().optional(),
         ingredientes: z.array(esquemaIngrediente).min(1).max(60).optional(),
         ...camposTermicos,
       }), req.body, res);
       if (!d) return;
-      if (cfg.tabla !== "producciones") delete d.unidades;
       try {
-        const lote = await db(req, async (c) => {
-          const { rows: [actual] } = await c.query(`${SELECT} WHERE pp.id = $1 FOR UPDATE OF pp`, [req.params.id]);
+        const r = await db(req, async (c) => {
+          let destino = cfg;
+          const { interna, ingredientes, ...campos } = d;
+          if (interna !== undefined && interna !== (cfg.clave === "intermedia")) {
+            destino = CONFIG[interna ? "intermedia" : "final"];
+            await moverLote(c, req.params.id, cfg, destino);
+          }
+          const SEL = selectElaboracion(destino);
+          const { rows: [actual] } = await c.query(`${SEL} WHERE pp.id = $1 FOR UPDATE OF pp`, [req.params.id]);
           if (!actual) throw fallo("Lote no encontrado.", 404);
-          if (d.num_lote && d.num_lote !== actual.num_lote) await loteRepetido(c, d.num_lote, req.params.id);
-          const { ingredientes, ...campos } = d;
+          if (destino.tabla !== "producciones") delete campos.unidades;
+          if (campos.producto_id && campos.producto_id !== actual.producto_id) {
+            const { rows: [np] } = await c.query("SELECT unidad_medida FROM productos WHERE id = $1 AND tipo IN ('preparado', 'elaborado')", [campos.producto_id]);
+            if (!np) throw fallo("Ese producto no existe.", 400);
+            campos.unidad = np.unidad_medida;
+          } else delete campos.producto_id;
+          if (campos.declaracion_ingredientes === "") campos.declaracion_ingredientes = null;
+          if (campos.num_lote && campos.num_lote !== actual.num_lote) await loteRepetido(c, campos.num_lote, req.params.id);
           const claves = Object.keys(campos).filter((k) => campos[k] !== undefined);
-          if (cfg.conStock && d.cantidad !== undefined) {
+          if (config.controlStock && destino.conStock && campos.cantidad !== undefined) {
             const usado = Number(actual.cantidad) - Number(actual.disponible);
-            if (d.cantidad < usado) throw fallo(`Ya se han usado ${usado} ${actual.unidad} de este lote; la cantidad no puede ser menor.`, 409);
+            if (campos.cantidad < usado) throw fallo(`Ya se han usado ${usado} ${actual.unidad} de este lote; la cantidad no puede ser menor.`, 409);
           }
           if (actual.proceso_termico && claves.some((k) => k.startsWith("coccion") || k.startsWith("abat"))) exigirCorrectora(actual, { ...actual, ...campos });
-          if (claves.length) {
+          if (claves.length || destino !== cfg) {
             const sets = [...claves.map((k, i) => `${k} = $${i + 2}`), `modificado_por = $${claves.length + 2}`, "modificado_en = now()"];
-            await c.query(`UPDATE ${cfg.tabla} SET ${sets.join(", ")} WHERE id = $1`, [req.params.id, ...claves.map((k) => campos[k]), req.usuario.id]);
+            await c.query(`UPDATE ${destino.tabla} SET ${sets.join(", ")} WHERE id = $1`, [req.params.id, ...claves.map((k) => campos[k]), req.usuario.id]);
+          }
+          // Donde este lote se usó como ingrediente se guarda una copia del nº de lote: se actualiza.
+          if (campos.num_lote && destino.conStock) await c.query("UPDATE consumos SET num_lote = $2 WHERE origen_preparado = $1", [req.params.id, campos.num_lote]);
+          if (campos.producto_id) {
+            await c.query("UPDATE productos SET tipo = $2 WHERE id = $1", [campos.producto_id, destino.tipo]);
+            if (destino.conStock) await c.query("UPDATE consumos SET producto_id = $2, unidad = $3 WHERE origen_preparado = $1", [req.params.id, campos.producto_id, campos.unidad]);
           }
           if (ingredientes) {
             // Se devuelve al stock lo consumido antes y se descuenta lo nuevo.
-            await c.query(`DELETE FROM consumos WHERE ${cfg.fk} = $1`, [req.params.id]);
-            await guardarConsumos(c, req.usuario.obrador_id, req.params.id, ingredientes);
-            await c.query(`UPDATE ${cfg.tabla} SET modificado_por = $2, modificado_en = now() WHERE id = $1`, [req.params.id, req.usuario.id]);
+            await c.query(`DELETE FROM consumos WHERE ${destino.fk} = $1`, [req.params.id]);
+            await guardarConsumos(c, req.usuario.obrador_id, req.params.id, ingredientes, destino);
+            await c.query(`UPDATE ${destino.tabla} SET modificado_por = $2, modificado_en = now() WHERE id = $1`, [req.params.id, req.usuario.id]);
           }
-          return (await c.query(`${SELECT} WHERE pp.id = $1`, [req.params.id])).rows[0];
+          return { destino, lote: (await c.query(`${SEL} WHERE pp.id = $1`, [req.params.id])).rows[0] };
         });
-        res.json({ [cfg.singular]: conTermico(lote) });
+        res.json({ [r.destino.singular]: conTermico(r.lote), clase: r.destino.clave });
       } catch (e) {
         if (e.status) return enviarError(res, e);
         if (e.code === "23505") return res.status(409).json({ error: "Ya existe un lote con ese número.", campo: "num_lote" });

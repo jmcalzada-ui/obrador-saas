@@ -54,6 +54,8 @@ export const config = {
   // la fase 1: la cantidad de cada entrada se anota, pero no se descuenta.
   // Se activará en la fase 2 con CONTROL_STOCK=1.
   controlStock: process.env.CONTROL_STOCK === "1",
+  // Fichas técnicas en PDF por marca: llegan en la fase 2, con su lectura por IA.
+  fichasTecnicas: process.env.FICHAS_TECNICAS === "1",
 
   // Precios del plan (para mostrar y calcular el importe; Stripe cobra lo suyo).
   // Mensual: básico 29,90 + módulos (escandallos, precios y lectura por IA 20 · APPCC temperaturas 10) + 3 por usuario extra.

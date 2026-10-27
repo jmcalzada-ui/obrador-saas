@@ -5,7 +5,7 @@ import { Aviso, Cargando, useSesion, num, fecha, euros, diasHasta } from "../com
 import Cabecera from "../componentes/Cabecera.jsx";
 import EtiquetaLote from "../componentes/EtiquetaLote.jsx";
 import Filtros, { filtrosVacios, aParametros } from "../componentes/Filtros.jsx";
-import Tabla from "../componentes/Tabla.jsx";
+import Tabla, { ordenar, SelectorOrden } from "../componentes/Tabla.jsx";
 import useEscritorio from "../hooks/useEscritorio.js";
 import { CONTROL_STOCK } from "../componentes/fase.js";
 
@@ -34,7 +34,7 @@ const COLUMNAS = [
   ...(CONTROL_STOCK ? [{ titulo: "Stock", num: true, celda: (r) => `${num(r.disponible)} ${r.unidad}`, orden: (r) => r.disponible }] : []),
   { titulo: "€/ud", num: true, celda: (r) => (r.precio_unidad != null ? euros(r.precio_unidad) : "—"), orden: (r) => r.precio_unidad ?? -1 },
   { titulo: "T.ª", num: true, celda: (r) => (r.temp_entrada != null ? `${num(r.temp_entrada)} °C` : "—"), orden: (r) => r.temp_entrada ?? -99 },
-  { titulo: "Estado", celda: (r) => <EstadoLote r={r} /> },
+  { titulo: "Estado", celda: (r) => <EstadoLote r={r} />, orden: (r) => (!r.activo ? "4" : r.estado_entrada === "no_conforme" ? "0" : r.estado_entrada === "conforme_con_incidencia" ? "1" : "2") },
 ];
 
 export default function Recepciones() {
@@ -44,6 +44,7 @@ export default function Recepciones() {
   const [soloStock, setSoloStock] = useState(CONTROL_STOCK);
   const [lista, setLista] = useState(null);
   const [error, setError] = useState("");
+  const [orden, setOrden] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -81,8 +82,11 @@ export default function Recepciones() {
           <>
             <p className="suave pequeno">{lista.length} {lista.length === 1 ? "entrada" : "entradas"}</p>
             {escritorio
-              ? <Tabla columnas={COLUMNAS} filas={lista} onFila={ir} etiqueta="Entradas de mercancía" />
-              : lista.map((r) => <EtiquetaLote key={r.id} r={r} onClick={() => ir(r)} />)}
+              ? <Tabla columnas={COLUMNAS} filas={ordenar(lista, COLUMNAS, orden)} orden={orden} onOrden={setOrden} onFila={ir} etiqueta="Entradas de mercancía" />
+              : <>
+                  <SelectorOrden columnas={COLUMNAS} orden={orden} onOrden={setOrden} />
+                  {ordenar(lista, COLUMNAS, orden).map((r) => <EtiquetaLote key={r.id} r={r} onClick={() => ir(r)} />)}
+                </>}
           </>
         )}
       </main>

@@ -2,6 +2,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { baseLimpia, nuevoObrador, login, cliente, pool } from "./helpers.js";
+import { config } from "../src/config.js";
 
 let O, producto;
 const cuentas = {};
@@ -104,6 +105,10 @@ test("una recepción con consumos no se puede borrar ni rebajar por debajo de lo
   const detalle = (await O.api.get(`/api/recepciones/${rec.id}`)).body;
   assert.equal(detalle.recepcion.disponible, 6);
   assert.equal(detalle.usos[0].lote_destino, "BECH-1");
+  // Con control de stock (fase 2) no se puede rebajar por debajo de lo usado; sin él (fase 1), sí.
+  config.controlStock = true;
   assert.equal((await O.api.patch(`/api/recepciones/${rec.id}`, { cantidad: 3 })).status, 409);
+  config.controlStock = false;
+  assert.equal((await O.api.patch(`/api/recepciones/${rec.id}`, { cantidad: 3 })).status, 200);
   assert.equal((await O.api.delete(`/api/recepciones/${rec.id}`)).status, 409);
 });

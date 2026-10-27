@@ -52,7 +52,7 @@ async function productos(c, f) {
   if (f.hasta) cond.push(`p.creado_en < $${params.push(f.hasta)}::date + 1`);
   const { rows } = await c.query(
     `SELECT p.nombre, p.unidad_medida, p.conservacion, p.categoria, p.creado_en,
-            m.nombre AS marca, m.formato, m.alergenos, m.precio_referencia, m.ficha_id IS NOT NULL AS ficha, pr.nombre AS proveedor,
+            m.nombre AS marca, m.formato, m.alergenos, m.trazas, m.precio_referencia, m.ficha_id IS NOT NULL AS ficha, pr.nombre AS proveedor,
             (SELECT round(r.precio_total / r.cantidad, 4) FROM recepciones r
               WHERE r.producto_id = p.id AND (m.id IS NULL OR r.marca_id = m.id) AND r.precio_total IS NOT NULL
               ORDER BY r.fecha DESC, r.creado_en DESC LIMIT 1) AS ultimo_precio
@@ -67,12 +67,14 @@ async function productos(c, f) {
       { titulo: "Producto", ancho: 3 }, { titulo: "Marca", ancho: 2.4 }, { titulo: "Formato", ancho: 1.8 },
       { titulo: "Ud.", ancho: 0.7, alinear: "center" }, { titulo: "Conservación", ancho: 1.4 }, { titulo: "Proveedor", ancho: 2.4 },
       { titulo: "Precio ref. €/ud", ancho: 1.3, alinear: "right" }, { titulo: "Último precio €/ud", ancho: 1.3, alinear: "right" },
-      { titulo: "Alérgenos", ancho: 2.6 }, { titulo: "Ficha técnica", ancho: 1, alinear: "center" },
+      { titulo: "Alérgenos", ancho: 2.4 }, { titulo: "Trazas", ancho: 2 },
+      ...(config.fichasTecnicas ? [{ titulo: "Ficha técnica", ancho: 1, alinear: "center" }] : []),
     ],
     filas: rows.map((r) => [
       r.nombre, r.marca || "", r.formato || "", r.unidad_medida, CONSERVACION[r.conservacion] || "", r.proveedor || "",
       eur(r.precio_referencia), eur(r.ultimo_precio), (r.alergenos || []).map((a) => ALERGENO[a] || a).join(", "),
-      r.marca ? siNo(r.ficha) : "",
+      (r.trazas || []).filter((a) => !(r.alergenos || []).includes(a)).map((a) => ALERGENO[a] || a).join(", "),
+      ...(config.fichasTecnicas ? [r.marca ? siNo(r.ficha) : ""] : []),
     ]),
   };
 }

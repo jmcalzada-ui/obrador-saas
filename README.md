@@ -72,6 +72,7 @@ Tres puertas en la misma web:
 | `STRIPE_PRECIO_USUARIO_EXTRA_ANUAL` | Id del precio de 30 €/año por usuario (2 meses gratis) |
 | `STRIPE_PRECIO_COMPLETO_ANUAL` | Id del precio del plan completo, 539 €/año (3 meses gratis) |
 | `PLAN_COMPLETO_DISPONIBLE` | `1` cuando los módulos estén listos para ofrecer el plan completo |
+| `FICHAS_TECNICAS` | `1` en la fase 2 para volver a mostrar la ficha técnica en PDF de cada marca (en la interfaz, `FICHAS_TECNICAS` en `frontend/src/componentes/fase.js`) |
 | `CONTROL_STOCK` | `1` en la fase 2 para descontar lo usado y avisar si falta stock (en la fase 1 está apagado; en la interfaz, `CONTROL_STOCK` en `frontend/src/componentes/fase.js`) |
 | `RESEND_API_KEY` | Envío de correos (resend.com) |
 | `CORREO_REMITENTE` | p. ej. `Tu Servicio <hola@tuservicio.com>` |

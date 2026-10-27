@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Pencil, Trash2, PackageX, PackageCheck } from "lucide-react";
 import { api } from "../api.js";
-import { Aviso, Campo, Cargando, Hoja, Opciones, useSesion, useToast, num, fecha, euros, aNumero } from "../componentes/ui.jsx";
+import { Aviso, Cargando, Hoja, useSesion, useToast, num, fecha, euros } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import EtiquetaLote from "../componentes/EtiquetaLote.jsx";
 
@@ -13,7 +13,6 @@ export default function RecepcionDetalle({ id }) {
   const toast = useToast();
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
-  const [editando, setEditando] = useState(false);
   const [borrando, setBorrando] = useState(false);
 
   const cargar = () =>
@@ -46,7 +45,7 @@ export default function RecepcionDetalle({ id }) {
         titulo="Entrada de mercancía"
         volver="/entradas"
         accion={r && puede("editar") && (
-          <button className="boton-icono" aria-label="Editar" onClick={() => setEditando(true)}><Pencil size={22} /></button>
+          <button className="boton-icono" aria-label="Editar" onClick={() => (window.location.hash = `/entradas/${id}/editar`)}><Pencil size={22} /></button>
         )}
       />
       <main className="contenido">
@@ -58,7 +57,7 @@ export default function RecepcionDetalle({ id }) {
             <dl className="ficha panel">
               <dt>Entrada</dt><dd>{fecha(r.fecha)}</dd>
               <dt>Caducidad</dt><dd>{fecha(r.caducidad)}</dd>
-              <dt>Marca</dt><dd>{r.marca || "—"}</dd>
+              <dt>Marca (fabricante)</dt><dd>{r.marca || "—"}</dd>
               <dt>Proveedor</dt><dd>{r.proveedor || "—"}</dd>
               <dt>Factura</dt><dd>{r.factura || "—"}</dd>
               <dt>Bultos</dt><dd>{r.bultos ?? "—"}</dd>
@@ -114,13 +113,6 @@ export default function RecepcionDetalle({ id }) {
         )}
       </main>
 
-      {editando && (
-        <EditarRecepcion
-          r={r}
-          onCerrar={() => setEditando(false)}
-          onGuardado={(recepcion) => { setDatos((d) => ({ ...d, recepcion })); setEditando(false); toast("Cambios guardados"); }}
-        />
-      )}
       {borrando && (
         <Hoja titulo="¿Eliminar esta entrada?" onCerrar={() => setBorrando(false)}>
           <p>Se borrará el registro del lote {r.num_lote || "sin número"}. Si el lote ya se ha usado en alguna elaboración no se podrá eliminar; en ese caso, dalo de baja.</p>
@@ -129,69 +121,5 @@ export default function RecepcionDetalle({ id }) {
         </Hoja>
       )}
     </>
-  );
-}
-
-function EditarRecepcion({ r, onCerrar, onGuardado }) {
-  const [f, setF] = useState({
-    num_lote: r.num_lote, cantidad: String(r.cantidad).replace(".", ","), unidad: r.unidad,
-    caducidad: r.caducidad || "", fecha: r.fecha, factura: r.factura,
-    temp_entrada: r.temp_entrada !== null ? String(r.temp_entrada).replace(".", ",") : "",
-    estado_entrada: r.estado_entrada, observaciones: r.observaciones,
-  });
-  const [error, setError] = useState("");
-  const [guardando, setGuardando] = useState(false);
-  const cambiar = (p) => setF((x) => ({ ...x, ...p }));
-
-  async function guardar() {
-    const cantidad = aNumero(f.cantidad);
-    const temp = aNumero(f.temp_entrada);
-    if (!(cantidad > 0)) return setError("Indica una cantidad mayor que 0.");
-    if (Number.isNaN(temp)) return setError("La temperatura no es un número.");
-    setGuardando(true);
-    try {
-      const { recepcion } = await api.patch(`/recepciones/${r.id}`, {
-        num_lote: f.num_lote.trim(), cantidad, caducidad: f.caducidad || null, fecha: f.fecha,
-        factura: f.factura.trim(), temp_entrada: temp, estado_entrada: f.estado_entrada, observaciones: f.observaciones.trim(),
-      });
-      onGuardado(recepcion);
-    } catch (e) {
-      setError(e.message);
-      setGuardando(false);
-    }
-  }
-
-  return (
-    <Hoja titulo="Editar entrada" onCerrar={onCerrar}>
-      <Campo etiqueta="Nº de lote" id="e-lote">
-        <input id="e-lote" className="entrada grande" value={f.num_lote} onChange={(e) => cambiar({ num_lote: e.target.value })} />
-      </Campo>
-      <Campo etiqueta={`Cantidad recibida (${r.unidad})`} id="e-cant">
-        <input id="e-cant" className="entrada grande" inputMode="decimal" value={f.cantidad} onChange={(e) => cambiar({ cantidad: e.target.value })} />
-      </Campo>
-      <div className="dos-columnas">
-        <Campo etiqueta="Caducidad" id="e-cad">
-          <input id="e-cad" className="entrada" type="date" value={f.caducidad} onChange={(e) => cambiar({ caducidad: e.target.value })} />
-        </Campo>
-        <Campo etiqueta="Entrada" id="e-fe">
-          <input id="e-fe" className="entrada" type="date" value={f.fecha} onChange={(e) => cambiar({ fecha: e.target.value })} />
-        </Campo>
-      </div>
-      <Campo etiqueta="Factura o albarán" id="e-fac">
-        <input id="e-fac" className="entrada" value={f.factura} onChange={(e) => cambiar({ factura: e.target.value })} />
-      </Campo>
-      <Opciones etiqueta="Estado" anchas valor={f.estado_entrada} onCambio={(v) => cambiar({ estado_entrada: v })}
-        opciones={Object.entries(ESTADOS).map(([valor, texto]) => ({ valor, texto, tono: valor === "conforme" ? "verde" : valor === "no_conforme" ? "rojo" : "" }))} />
-      <Campo etiqueta="Temperatura (°C)" id="e-temp">
-        <input id="e-temp" className="entrada" inputMode="decimal" value={f.temp_entrada} onChange={(e) => cambiar({ temp_entrada: e.target.value })} />
-      </Campo>
-      <Campo etiqueta="Observaciones" id="e-obs">
-        <textarea id="e-obs" className="entrada" value={f.observaciones} onChange={(e) => cambiar({ observaciones: e.target.value })} />
-      </Campo>
-      {error && <Aviso tipo="error">{error}</Aviso>}
-      <button className="boton principal grande bloque" onClick={guardar} disabled={guardando}>
-        {guardando ? "Guardando…" : "Guardar cambios"}
-      </button>
-    </Hoja>
   );
 }
