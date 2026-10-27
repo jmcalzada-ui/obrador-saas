@@ -70,7 +70,7 @@ export async function generarDeclaracion(c, fk, id, profundidad = 0) {
 
   const items = [...porProducto.values()];
   const total = items.reduce((s, i) => s + (i.sinPeso ? 0 : i.masa), 0);
-  items.sort((a, b) => (a.sinPeso - b.sinPeso) || b.masa - a.masa);
+  items.sort((a, b) => (a.sinPeso - b.sinPeso) || b.masa - a.masa || a.nombre.localeCompare(b.nombre, "es"));
   const lista = items.map((i) => {
     const pct = !i.sinPeso && total > 0 ? (i.masa / total) * 100 : null;
     const igual = (x, y) => x.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === y.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
