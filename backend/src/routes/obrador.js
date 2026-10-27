@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requireAuthPermitiendoBloqueo, requirePermiso, db } from "../auth/middleware.js";
 import { crearSesionPago, crearSesionPortal } from "../lib/cobros.js";
@@ -9,7 +9,7 @@ export const SECTORES = ["carnica", "panaderia", "pasteleria", "comidas_preparad
 export const obradorRouter = Router();
 
 const CAMPOS = `id, nombre, razon_social, cif, registro_sanitario, sector, num_empleados, direccion, direccion_fiscal, codigo_postal,
-  municipio, provincia, pais, contacto_nombre, email_contacto, email_facturacion, telefono, logo_url, estado, creado_en`;
+  municipio, provincia, pais, contacto_nombre, email_contacto, email_facturacion, telefono, logo_id, estado, creado_en`;
 
 obradorRouter.get(
   "/",
@@ -66,6 +66,74 @@ obradorRouter.patch(
       return rows[0];
     });
     res.json({ obrador });
+  })
+);
+
+// ---------- Logotipo ----------
+// El navegador lo convierte a PNG (o JPEG) antes de enviarlo, así que aquí
+// solo llegan esos dos formatos, que también sirven para los informes PDF.
+const TAM_MAX_LOGO = 1.5 * 1024 * 1024;
+const esPng = (b) => b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+const esJpeg = (b) => b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+
+/** Logotipo del obrador como { mime_type, contenido } o null. */
+export async function leerLogo(c) {
+  const { rows: [a] } = await c.query("SELECT a.mime_type, a.contenido FROM obradores o JOIN archivos a ON a.id = o.logo_id");
+  return a || null;
+}
+
+obradorRouter.get(
+  "/logo",
+  requireAuthPermitiendoBloqueo,
+  ruta(async (req, res) => {
+    const a = await db(req, leerLogo);
+    if (!a) return res.status(404).json({ error: "Este obrador no tiene logotipo." });
+    res.set("Content-Type", a.mime_type);
+    res.set("Cache-Control", "private, max-age=86400");
+    res.send(a.contenido);
+  })
+);
+
+obradorRouter.put(
+  "/logo",
+  express.json({ limit: "3mb" }),
+  requireAuth,
+  requirePermiso("obrador"),
+  ruta(async (req, res) => {
+    const d = validar(z.object({
+      nombre: z.string().trim().min(1).max(160),
+      mime_type: z.enum(["image/png", "image/jpeg"], { errorMap: () => ({ message: "El logotipo debe ser una imagen PNG o JPEG." }) }),
+      base64: z.string().min(10),
+    }), req.body, res);
+    if (!d) return;
+    const contenido = Buffer.from(d.base64, "base64");
+    if (contenido.length > TAM_MAX_LOGO) return res.status(413).json({ error: "La imagen es demasiado grande (máximo 1,5 MB)." });
+    if (!(d.mime_type === "image/png" ? esPng(contenido) : esJpeg(contenido))) return res.status(400).json({ error: "El archivo no es una imagen válida." });
+    const logoId = await db(req, async (c) => {
+      const { rows: [o] } = await c.query("SELECT logo_id FROM obradores");
+      const { rows: [a] } = await c.query(
+        `INSERT INTO archivos (obrador_id, nombre, mime_type, tamano_bytes, contenido, subido_por)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+        [req.usuario.obrador_id, d.nombre, d.mime_type, contenido.length, contenido, req.usuario.id]
+      );
+      await c.query("UPDATE obradores SET logo_id = $2 WHERE id = $1", [req.usuario.obrador_id, a.id]);
+      if (o.logo_id) await c.query("DELETE FROM archivos WHERE id = $1", [o.logo_id]);
+      return a.id;
+    });
+    res.json({ logo_id: logoId });
+  })
+);
+
+obradorRouter.delete(
+  "/logo",
+  requireAuth,
+  requirePermiso("obrador"),
+  ruta(async (req, res) => {
+    await db(req, async (c) => {
+      const { rows: [o] } = await c.query("SELECT logo_id FROM obradores");
+      if (o.logo_id) await c.query("DELETE FROM archivos WHERE id = $1", [o.logo_id]);
+    });
+    res.status(204).end();
   })
 );
 

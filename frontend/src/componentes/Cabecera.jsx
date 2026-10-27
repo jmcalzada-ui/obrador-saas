@@ -1,6 +1,7 @@
 import React from "react";
 import { ArrowLeft } from "lucide-react";
 import { useSesion } from "./ui.jsx";
+import { LogoObrador } from "./Logo.jsx";
 
 /** Cabecera de cada pantalla: título y, si procede, botón de volver. */
 export default function Cabecera({ titulo, volver, accion }) {
@@ -12,6 +13,7 @@ export default function Cabecera({ titulo, volver, accion }) {
           <ArrowLeft size={24} />
         </button>
       )}
+      {!volver && <LogoObrador className="logo-cabecera" />}
       <div className="titulo">
         <h1>{titulo}</h1>
         {!volver && <div className="obrador">{obrador.nombre}</div>}

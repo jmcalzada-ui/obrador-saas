@@ -10,18 +10,18 @@ export const normal = (s) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").
  */
 export default function Autocompletar({
   etiqueta, valor, onTexto, opciones, onElegir, onCrear, textoCrear = (t) => `Añadir «${t}»`,
-  placeholder, autoFocus, maxSugerencias = 8, mostrarTodasVacio = false,
+  placeholder, autoFocus, maxSugerencias = 8, mostrarTodasVacio = false, mostrarSiempre = false, grande = false, titulo,
 }) {
   const id = useId();
   const [abierto, setAbierto] = useState(Boolean(autoFocus));
   const filtradas = useMemo(() => {
     const n = normal(valor);
-    if (!n) return mostrarTodasVacio ? opciones.slice(0, maxSugerencias) : [];
+    if (!n || (mostrarSiempre && opciones.some((o) => normal(o.texto) === n))) return mostrarTodasVacio || mostrarSiempre ? opciones.slice(0, maxSugerencias) : [];
     // Primero las que empiezan por lo escrito, luego las que lo contienen.
     const empieza = opciones.filter((o) => normal(o.texto).startsWith(n));
     const contiene = opciones.filter((o) => !normal(o.texto).startsWith(n) && normal(o.texto).includes(n));
     return [...empieza, ...contiene].slice(0, maxSugerencias);
-  }, [valor, opciones, maxSugerencias, mostrarTodasVacio]);
+  }, [valor, opciones, maxSugerencias, mostrarTodasVacio, mostrarSiempre]);
   const exacto = opciones.some((o) => normal(o.texto) === normal(valor));
 
   return (
@@ -29,7 +29,7 @@ export default function Autocompletar({
       {etiqueta && <label htmlFor={id}>{etiqueta}</label>}
       <input
         id={id}
-        className="entrada"
+        className={`entrada ${grande ? "grande" : ""}`}
         value={valor}
         placeholder={placeholder}
         autoFocus={autoFocus}
@@ -38,10 +38,13 @@ export default function Autocompletar({
         aria-expanded={abierto && (filtradas.length > 0 || Boolean(onCrear))}
         aria-controls={`${id}-lista`}
         onFocus={() => setAbierto(true)}
+        onBlur={() => setAbierto(false)}
+        onKeyDown={(e) => e.key === "Escape" && setAbierto(false)}
         onChange={(e) => { onTexto(e.target.value); setAbierto(true); }}
       />
       {abierto && (filtradas.length > 0 || (onCrear && valor.trim() && !exacto)) && (
         <ul className="sugerencias" id={`${id}-lista`} role="listbox">
+          {titulo && <li className="sugerencias-titulo" aria-hidden>{titulo}</li>}
           {filtradas.map((o) => (
             <li key={o.id} role="option" aria-selected="false">
               <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { onElegir(o); setAbierto(false); }}>

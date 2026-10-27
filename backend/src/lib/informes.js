@@ -4,7 +4,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import ExcelJS from "exceljs";
 import pdfmake from "pdfmake";
-import { selectElaboracion, filtrosElaboracion, CONFIG_ELABORACION, evaluarTermico } from "../routes/preparados.js";
+import { listarProduccion, evaluarTermico } from "../routes/preparados.js";
+import { config } from "../config.js";
 
 const require = createRequire(import.meta.url);
 const dirFuentes = path.join(path.dirname(require.resolve("pdfmake/package.json")), "build", "fonts", "Roboto");
@@ -93,7 +94,8 @@ async function entradas(c, f) {
       ORDER BY r.fecha DESC, r.creado_en DESC`,
     params
   );
-  return {
+  const conStock = config.controlStock;
+  const datos = {
     titulo: "Entradas de mercancía",
     columnas: [
       { titulo: "Fecha", ancho: 1.25 }, { titulo: "Producto", ancho: 2.3 }, { titulo: "Marca", ancho: 1.6 }, { titulo: "Proveedor", ancho: 1.8 },
@@ -110,19 +112,31 @@ async function entradas(c, f) {
       eur(r.precio_total), num(r.disponible), r.registro || "",
     ]),
   };
+  return conStock ? datos : quitarColumna(datos, "Disponible");
 }
 
-async function elaborados(c, f, clave) {
-  const cfg = CONFIG_ELABORACION[clave];
-  const { where, params } = filtrosElaboracion(f, cfg);
-  const { rows } = await c.query(`${selectElaboracion(cfg)} ${where} ORDER BY pp.fecha DESC, pp.creado_en DESC`, params);
-  const ids = rows.map((r) => r.id);
+/** Quita una columna (p. ej. "Disponible" mientras no hay control de stock). */
+function quitarColumna(datos, titulo) {
+  const i = datos.columnas.findIndex((col) => col.titulo === titulo);
+  if (i < 0) return datos;
+  return { ...datos, columnas: datos.columnas.filter((_, k) => k !== i), filas: datos.filas.map((fila) => fila.filter((_, k) => k !== i)) };
+}
+
+/**
+ * Producción: internas (se usan como ingrediente) y finales (se venden).
+ * interna: "1" solo internas, "0" solo finales, sin valor las dos.
+ */
+async function produccion(c, f) {
+  const rows = await listarProduccion(c, { ...f, limite: 5000 });
   const ingredientes = new Map();
-  if (ids.length) {
+  const internas = rows.filter((r) => r.interna).map((r) => r.id);
+  const finales = rows.filter((r) => !r.interna).map((r) => r.id);
+  for (const [fk, ids] of [["preparado_id", internas], ["produccion_id", finales]]) {
+    if (!ids.length) continue;
     const { rows: ing } = await c.query(
-      `SELECT c.${cfg.fk} AS destino, p.nombre, c.num_lote, c.cantidad, c.unidad
+      `SELECT c.${fk} AS destino, p.nombre, c.num_lote, c.cantidad, c.unidad
          FROM consumos c JOIN productos p ON p.id = c.producto_id
-        WHERE c.${cfg.fk} = ANY($1) ORDER BY p.nombre`,
+        WHERE c.${fk} = ANY($1) ORDER BY p.nombre`,
       [ids]
     );
     for (const i of ing) {
@@ -130,11 +144,13 @@ async function elaborados(c, f, clave) {
       ingredientes.get(i.destino).push(`${i.nombre} · lote ${i.num_lote || "s/n"} · ${num(i.cantidad)} ${i.unidad}`);
     }
   }
-  const final = clave === "final";
+  const soloUnTipo = f.interna === "1" || f.interna === "0";
   const columnas = [
-    { titulo: "Fecha", ancho: 1.25 }, { titulo: final ? "Producto final" : "Producción intermedia", ancho: 2.2 },
+    { titulo: "Fecha", ancho: 1.25 }, { titulo: "Producto", ancho: 2.2 },
+    ...(soloUnTipo ? [] : [{ titulo: "Interna", ancho: 0.75, alinear: "center" }]),
     { titulo: "Lote", ancho: 1.4 }, { titulo: "Cantidad", ancho: 0.9, alinear: "right" }, { titulo: "Ud.", ancho: 0.5, alinear: "center" },
-    ...(final ? [{ titulo: "Uds.", ancho: 0.8, alinear: "right" }] : [{ titulo: "Disponible", ancho: 1.15, alinear: "right" }]),
+    { titulo: "Uds.", ancho: 0.7, alinear: "right" },
+    ...(config.controlStock ? [{ titulo: "Disponible", ancho: 1.15, alinear: "right" }] : []),
     { titulo: "Caducidad", ancho: 1.25 }, { titulo: "Ingredientes (producto · lote · cantidad)", ancho: 4.2 },
     { titulo: "Cocción", ancho: 1.1 }, { titulo: "Abatimiento", ancho: 1.7 }, { titulo: "Control térmico", ancho: 1.1 },
     { titulo: "Medida correctora", ancho: 1.6 }, { titulo: "Responsable", ancho: 1.2 },
@@ -147,33 +163,53 @@ async function elaborados(c, f, clave) {
         : r.abat_hora_inicio ? `Iniciado ${hora(r.abat_hora_inicio)}` : "Pendiente"
       : "";
     return [
-      fecha(r.fecha), r.producto, r.num_lote, num(r.cantidad), r.unidad,
-      final ? (r.unidades ?? "") : num(r.disponible),
+      fecha(r.fecha), r.producto, ...(soloUnTipo ? [] : [r.interna ? "Sí" : "No"]), r.num_lote, num(r.cantidad), r.unidad,
+      r.unidades ?? "", ...(config.controlStock ? [r.interna ? num(r.disponible) : ""] : []),
       fecha(r.caducidad), (ingredientes.get(r.id) || []).join("\n"),
       r.proceso_termico && r.coccion_temp != null ? `${num(r.coccion_temp, 1)} °C · ${r.coccion_minutos ?? "–"} min` : "",
       abat, ESTADO_PCC[t.estado], r.medida_correctora || "", r.responsable || "",
     ];
   });
-  return { titulo: final ? "Producto final" : "Producción intermedia", columnas, filas };
+  const titulo = f.interna === "1" ? "Producción interna" : f.interna === "0" ? "Producción final" : "Producción";
+  return { titulo, columnas, filas };
 }
 
 export const SECCIONES = {
   productos,
   entradas,
-  intermedia: (c, f) => elaborados(c, f, "intermedia"),
-  final: (c, f) => elaborados(c, f, "final"),
+  produccion,
+  intermedia: (c, f) => produccion(c, { ...f, interna: "1" }),
+  final: (c, f) => produccion(c, { ...f, interna: "0" }),
 };
 
 function textoFiltros(f) {
   const partes = [];
   if (f.desde || f.hasta) partes.push(`Fechas: ${f.desde ? fecha(f.desde) : "inicio"} – ${f.hasta ? fecha(f.hasta) : "hoy"}`);
   if (f.q) partes.push(`Búsqueda: «${f.q}»`);
-  if (f.con_stock === "1") partes.push("Solo lotes con stock");
+  if (f.con_stock === "1" && config.controlStock) partes.push("Solo lotes con stock");
+  if (f.interna === "1") partes.push("Solo producción interna");
+  if (f.interna === "0") partes.push("Solo producción final");
   return partes.join("   ·   ") || "Sin filtros";
 }
 
+/** Ancho y alto de una imagen PNG o JPEG (para no deformar el logotipo). */
+function medidasImagen(b) {
+  try {
+    if (b[0] === 0x89) return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+    let i = 2;
+    while (i < b.length) {
+      if (b[i] !== 0xff) { i++; continue; }
+      const m = b[i + 1];
+      if (m >= 0xc0 && m <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(m)) return { w: b.readUInt16BE(i + 7), h: b.readUInt16BE(i + 5) };
+      i += 2 + b.readUInt16BE(i + 2);
+    }
+  } catch { /* imagen rara: tamaño por defecto */ }
+  return { w: 3, h: 1 };
+}
+
 // ---------- PDF (A4 apaisado) ----------
-export async function generarPdf(datos, obrador, f) {
+export async function generarPdf(datos, obrador, f, logo = null) {
+  const imagenLogo = logo ? `data:${logo.mime_type};base64,${logo.contenido.toString("base64")}` : null;
   const anchoUtil = 841.89 - 2 * 24; // A4 apaisado menos márgenes, en puntos
   const total = datos.columnas.reduce((s, col) => s + col.ancho, 0);
   const widths = datos.columnas.map((col) => (col.ancho / total) * anchoUtil - 4.2);
@@ -194,6 +230,7 @@ export async function generarPdf(datos, obrador, f) {
           { text: datos.titulo, fontSize: 14, bold: true },
           { text: textoFiltros(f), fontSize: 8, color: "#58625d", margin: [0, 3, 0, 0] },
         ] },
+        ...(imagenLogo ? [{ width: "auto", image: imagenLogo, fit: [110, 42], margin: [0, 0, 10, 0] }] : []),
         { width: "auto", alignment: "right", stack: [
           { text: obrador.nombre, bold: true, fontSize: 10 },
           { text: [obrador.razon_social, obrador.registro_sanitario && `RSI ${obrador.registro_sanitario}`].filter(Boolean).join(" · "), fontSize: 8, color: "#58625d" },
@@ -224,7 +261,7 @@ export async function generarPdf(datos, obrador, f) {
 }
 
 // ---------- Excel (preparado para imprimir en A4) ----------
-export async function generarExcel(datos, obrador, f) {
+export async function generarExcel(datos, obrador, f, logo = null) {
   const libro = new ExcelJS.Workbook();
   libro.creator = obrador.nombre;
   const hoja = libro.addWorksheet(datos.titulo.slice(0, 31), {
@@ -244,6 +281,14 @@ export async function generarExcel(datos, obrador, f) {
   hoja.getCell(2, 1).value = [obrador.razon_social, obrador.registro_sanitario && `RSI ${obrador.registro_sanitario}`, textoFiltros(f),
     `Generado el ${new Date().toLocaleString("es-ES", { timeZone: "Europe/Madrid" })}`].filter(Boolean).join("   ·   ");
   hoja.getCell(2, 1).font = { size: 9, color: { argb: "FF58625D" } };
+  hoja.getRow(1).height = 34;
+  if (logo) {
+    // Logotipo arriba a la derecha, sobre las dos primeras filas.
+    const id = libro.addImage({ buffer: logo.contenido, extension: logo.mime_type === "image/png" ? "png" : "jpeg" });
+    const { w, h } = medidasImagen(logo.contenido);
+    const escala = Math.min(130 / w, 44 / h);
+    hoja.addImage(id, { tl: { col: Math.max(0, n - 2), row: 0 }, ext: { width: Math.round(w * escala), height: Math.round(h * escala) }, editAs: "oneCell" });
+  }
 
   const borde = { style: "thin", color: { argb: "FF9AA5A0" } };
   const bordes = { top: borde, left: borde, bottom: borde, right: borde };

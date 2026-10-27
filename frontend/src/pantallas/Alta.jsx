@@ -161,7 +161,7 @@ function Formulario() {
             </div>
             <div className="panel pila">
               <div className="fila entre"><strong>{completo ? "Plan completo" : "Plan básico"}</strong><span className="numero">{euros(base)} / {sufijo}</span></div>
-              <p className="suave pequeno">Gestor y 1 usuario más (jefe de producción, operario u observador), con productos, entradas de mercancía, producción intermedia, producto final y trazabilidad{completo ? ", más escandallos, precios, lectura de fichas por IA y registros de temperatura" : ""}.</p>
+              <p className="suave pequeno">Gestor y 1 usuario más (jefe de producción, operario u observador), con productos, entradas de mercancía, producción (interna y final) y trazabilidad{completo ? ", más escandallos, precios, lectura de fichas por IA y registros de temperatura" : ""}.</p>
               <div className="fila entre">
                 <div><strong>Usuarios extra</strong><div className="suave pequeno">{euros(extra)} / {sufijo} cada uno{anual ? " (2 meses gratis)" : ""}</div></div>
                 <div className="fila">

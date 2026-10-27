@@ -5,11 +5,12 @@ import { z } from "zod";
 import { requireAuth, requirePermiso, db } from "../auth/middleware.js";
 import { ruta, validar } from "../lib/utiles.js";
 import { SECCIONES, generarExcel, generarPdf } from "../lib/informes.js";
+import { leerLogo } from "./obrador.js";
 
 export const informesRouter = Router();
 informesRouter.use(requireAuth, requirePermiso("ver"));
 
-const NOMBRE_ARCHIVO = { productos: "productos", entradas: "entradas", intermedia: "produccion-intermedia", final: "producto-final" };
+const NOMBRE_ARCHIVO = { productos: "productos", entradas: "entradas", produccion: "produccion", intermedia: "produccion-interna", final: "produccion-final" };
 
 informesRouter.get(
   "/:seccion",
@@ -22,21 +23,24 @@ informesRouter.get(
       desde: z.string().date().optional(),
       hasta: z.string().date().optional(),
       con_stock: z.enum(["1", "0"]).optional(),
+      interna: z.enum(["1", "0"]).optional(),
     }), req.query, res);
     if (!f) return;
-    const { datos, obrador } = await db(req, async (c) => ({
+    const { datos, obrador, logo } = await db(req, async (c) => ({
+      logo: await leerLogo(c),
       datos: await constructor(c, f),
       obrador: (await c.query("SELECT nombre, razon_social, registro_sanitario FROM obradores WHERE id = $1", [req.usuario.obrador_id])).rows[0],
     }));
     const sufijo = [f.desde, f.hasta].filter(Boolean).join("_") || new Date().toISOString().slice(0, 10);
-    const nombre = `${NOMBRE_ARCHIVO[req.params.seccion]}_${sufijo}.${f.formato}`;
+    const base = req.params.seccion === "produccion" && f.interna ? NOMBRE_ARCHIVO[f.interna === "1" ? "intermedia" : "final"] : NOMBRE_ARCHIVO[req.params.seccion];
+    const nombre = `${base}_${sufijo}.${f.formato}`;
     if (f.formato === "xlsx") {
       res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.set("Content-Disposition", `attachment; filename="${nombre}"`);
-      return res.send(await generarExcel(datos, obrador, f));
+      return res.send(await generarExcel(datos, obrador, f, logo));
     }
     res.set("Content-Type", "application/pdf");
     res.set("Content-Disposition", `inline; filename="${nombre}"`);
-    res.send(await generarPdf(datos, obrador, f));
+    res.send(await generarPdf(datos, obrador, f, logo));
   })
 );

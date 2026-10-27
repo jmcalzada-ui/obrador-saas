@@ -60,7 +60,7 @@ authRouter.get(
   ruta(async (req, res) => {
     const obrador = await db(req, async (c) => {
       const { rows } = await c.query(
-        `SELECT o.id, o.nombre, o.estado, s.plan, s.modulos, s.impago_desde, s.proximo_cobro,
+        `SELECT o.id, o.nombre, o.estado, o.logo_id, s.plan, s.modulos, s.impago_desde, s.proximo_cobro,
                 s.impago_desde + make_interval(days => $1) AS fecha_suspension,
                 s.usuarios_incluidos + s.usuarios_extra AS plazas_total
            FROM obradores o JOIN suscripciones s ON s.obrador_id = o.id`,

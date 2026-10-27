@@ -3,6 +3,10 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { baseLimpia, nuevoObrador, pool } from "./helpers.js";
+import { config } from "../src/config.js";
+
+// Estas pruebas cubren el control de stock de la fase 2 (en la fase 1 está apagado).
+config.controlStock = true;
 
 let O, harina, leche, recHarina, recLeche, bechamel;
 

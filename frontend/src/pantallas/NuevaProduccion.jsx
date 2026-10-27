@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, ChevronRight, Plus, Trash2, Flame, Snowflake } from "lucide-react";
+import { Check, ChevronRight, Plus, Trash2, Flame, Snowflake, CornerDownRight } from "lucide-react";
 import { api } from "../api.js";
 import { Aviso, Campo, Cargando, Opciones, useSesion, useToast, hoyISO, aNumero, num, fecha } from "../componentes/ui.jsx";
 import Autocompletar from "../componentes/Autocompletar.jsx";
 import ControlTermico, { aISO, horaAhora, evaluar } from "../componentes/ControlTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import { ELABORACION } from "../componentes/elaboracion.js";
+import { CONTROL_STOCK } from "../componentes/fase.js";
 
 const OBJETIVOS = { coccion_temp_min: 75, abatimiento_temp_max: 10, abatimiento_minutos_max: 120 };
 let siguienteId = 1;
@@ -19,13 +20,14 @@ function finISO(fecha, ini, fin) {
   return new Date(f) < new Date(i) ? new Date(new Date(f).getTime() + 86400000).toISOString() : f;
 }
 
-export default function NuevoPreparado({ tipo = "intermedia" }) {
-  const cfg = ELABORACION[tipo];
+export default function NuevaProduccion() {
   const { usuario } = useSesion();
   const toast = useToast();
   const [paso, setPaso] = useState("preparado");
-  const [catalogo, setCatalogo] = useState(null); // todos los productos (ingredientes y preparados)
-  const [lotes, setLotes] = useState([]);
+  const [catalogo, setCatalogo] = useState(null); // todos los productos (ingredientes y nombres de producción)
+  const [lotes, setLotes] = useState([]); // fase 1: últimos 3 lotes de cada ingrediente · fase 2: lotes con stock
+  const [interna, setInterna] = useState(false); // producción interna (se usa como ingrediente) o final (se vende)
+  const cfg = ELABORACION[interna ? "intermedia" : "final"];
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
 
@@ -36,7 +38,7 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
   const [termico, setTermico] = useState({ coccion_temp: "", coccion_minutos: "", abat_temp_inicio: "", abat_hora_inicio: horaAhora(), abat_temp_fin: "", abat_hora_fin: "", medida_correctora: "" });
 
   useEffect(() => {
-    Promise.all([api.get("/catalogo/productos"), api.get("/stock/lotes")])
+    Promise.all([api.get("/catalogo/productos"), api.get(CONTROL_STOCK ? "/stock/lotes" : "/produccion/ultimos-lotes")])
       .then(([c, l]) => { setCatalogo(c.productos.filter((p) => p.activo)); setLotes(l.lotes); })
       .catch((e) => setError(e.message));
   }, []);
@@ -49,6 +51,7 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
   const indice = pasos.indexOf(paso === "nuevo" ? "preparado" : paso);
 
   function elegirGuardado(p) {
+    setInterna(p.tipo === "preparado");
     setElegido(p);
     setNuevo(null);
     // Se proponen los ingredientes de la última vez.
@@ -57,6 +60,8 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
     irA("ingredientes");
   }
   function conLotePorDefecto(fila) {
+    // Fase 1: no se propone ningún lote; al pulsar en el campo salen los 3 últimos.
+    if (!CONTROL_STOCK) return { ...fila, lote: null, manual: true, num_lote: "" };
     const primero = lotes.find((l) => l.producto_id === fila.producto?.id);
     return { ...fila, lote: primero || null, manual: !primero };
   }
@@ -88,7 +93,7 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
         const c = aNumero(f.cantidad);
         if (!(c > 0)) return `Indica la cantidad usada de ${f.producto.nombre}.`;
         if (!f.manual && !f.lote) return `Elige el lote de ${f.producto.nombre}.`;
-        if (!f.manual && c > f.lote.disponible + 1e-9) return `Del lote ${f.lote.num_lote || "sin nº"} de ${f.producto.nombre} solo quedan ${num(f.lote.disponible)} ${f.lote.unidad}.`;
+        if (CONTROL_STOCK && !f.manual && c > f.lote.disponible + 1e-9) return `Del lote ${f.lote.num_lote || "sin nº"} de ${f.producto.nombre} solo quedan ${num(f.lote.disponible)} ${f.lote.unidad}.`;
       }
     }
     if (paso === "lote") {
@@ -135,8 +140,8 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
           : { origen: f.lote.origen, lote_id: f.lote.id, cantidad: aNumero(f.cantidad) }),
         ...t,
       });
-      toast(cfg.guardado);
-      window.location.hash = `${cfg.ruta}/${respuesta[cfg.uno].id}`;
+      toast(interna ? "Producción interna registrada" : "Producción registrada");
+      window.location.hash = `${cfg.rutaFicha}/${respuesta[cfg.uno].id}`;
     } catch (e) {
       setError(e.message);
       setGuardando(false);
@@ -146,30 +151,32 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
   if (!catalogo) {
     return (
       <>
-        <Cabecera titulo={cfg.nuevoTitulo} volver={cfg.ruta} />
+        <Cabecera titulo="Nueva producción" volver="/produccion" />
         <main className="contenido">{error ? <Aviso tipo="error">{error}</Aviso> : <Cargando />}</main>
       </>
     );
   }
 
-  const titulos = { preparado: cfg.pregunta, nuevo: `Nuevo: ${cfg.singular}`, ingredientes: "Ingredientes", lote: "Lote obtenido", termico: "Control térmico", revisar: "Revisar" };
+  const titulos = { preparado: "¿Qué vas a elaborar?", nuevo: "Producto nuevo", ingredientes: "Ingredientes", lote: "Lote obtenido", termico: "Control térmico", revisar: "Revisar" };
 
   return (
     <>
-      <Cabecera titulo={cfg.nuevoTitulo} volver={paso === "preparado" ? cfg.ruta : undefined} />
+      <Cabecera titulo="Nueva producción" volver={paso === "preparado" ? "/produccion" : undefined} />
       <main className="contenido">
         <div className="pasos" aria-hidden>{pasos.map((p, i) => <span key={p} className={i <= indice ? "hecho" : ""} />)}</div>
         <div className="paso-titulo">
           <span className="suave pequeno">Paso {indice + 1} de {pasos.length}</span>
           <h2>{titulos[paso]}</h2>
-          {datos && paso !== "preparado" && paso !== "nuevo" && <span className="suave">{datos.nombre}</span>}
+          {datos && paso !== "preparado" && paso !== "nuevo" && (
+            <span className="suave">{datos.nombre} {interna && <span className="distintivo azul">Interna</span>}</span>
+          )}
         </div>
 
         {paso === "preparado" && (
-          <PasoPreparado cfg={cfg} catalogo={catalogo} onElegir={elegirGuardado}
+          <PasoPreparado interna={interna} setInterna={setInterna} catalogo={catalogo} onElegir={elegirGuardado}
             onCrear={(nombre) => { setElegido(null); setNuevo({ nombre, unidad_medida: "kg", proceso_termico: null, vida_util_dias: "", conservacion: "refrigerado" }); setFilas([filaVacia()]); irA("nuevo"); }} />
         )}
-        {paso === "nuevo" && <PasoNuevo nuevo={nuevo} setNuevo={setNuevo} />}
+        {paso === "nuevo" && <PasoNuevo nuevo={nuevo} setNuevo={setNuevo} interna={interna} setInterna={setInterna} />}
         {paso === "ingredientes" && (
           <PasoIngredientes filas={filas} setFilas={setFilas} catalogo={catalogo.filter((c) => c.id !== elegido?.id && c.tipo !== "elaborado")} lotes={lotes} conLotePorDefecto={conLotePorDefecto} />
         )}
@@ -177,7 +184,7 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
         {paso === "termico" && (
           <ControlTermico obj={obj} v={termico} fecha={lote.fecha} cambiar={(p) => setTermico((x) => ({ ...x, ...p }))} />
         )}
-        {paso === "revisar" && <PasoRevisar cfg={cfg} datos={datos} filas={filas} lote={lote} unidad={unidad} termico={conTermico ? termico : null} obj={obj} irA={irA} />}
+        {paso === "revisar" && <PasoRevisar cfg={cfg} interna={interna} datos={datos} filas={filas} lote={lote} unidad={unidad} termico={conTermico ? termico : null} obj={obj} irA={irA} />}
 
         {error && <Aviso tipo="error">{error}</Aviso>}
       </main>
@@ -200,32 +207,47 @@ export default function NuevoPreparado({ tipo = "intermedia" }) {
   );
 }
 
-function PasoPreparado({ cfg, catalogo, onElegir, onCrear }) {
+/** Casilla "producción interna": se usa como ingrediente y no se vende. */
+function CasillaInterna({ interna, setInterna }) {
+  return (
+    <label className="casilla">
+      <input type="checkbox" checked={interna} onChange={(e) => setInterna(e.target.checked)} />
+      <span>
+        <strong>Producción interna</strong>
+        <span className="suave pequeno">Se elabora para usarla como ingrediente (sofrito, salsa, crema pastelera…), no se vende.</span>
+      </span>
+    </label>
+  );
+}
+
+function PasoPreparado({ interna, setInterna, catalogo, onElegir, onCrear }) {
   const [q, setQ] = useState("");
-  const guardados = catalogo.filter((p) => p.tipo === cfg.tipoProducto);
+  const guardados = catalogo.filter((p) => p.tipo === "preparado" || p.tipo === "elaborado");
   return (
     <div className="pila">
+      <CasillaInterna interna={interna} setInterna={setInterna} />
       <Autocompletar
         valor={q}
         onTexto={setQ}
-        opciones={guardados.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.proceso_termico ? "Con proceso térmico" : "Sin proceso térmico", p }))}
+        opciones={guardados.map((p) => ({ id: p.id, texto: p.nombre, detalle: [p.tipo === "preparado" ? "Producción interna" : "Producción final", p.proceso_termico ? "con proceso térmico" : "sin proceso térmico"].join(" · "), p }))}
         onElegir={(o) => onElegir(o.p)}
         onCrear={onCrear}
-        textoCrear={cfg.crear}
-        placeholder={cfg.placeholder}
+        textoCrear={(t) => `Crear «${t}»${interna ? " como producción interna" : ""}`}
+        placeholder="Nombre, p. ej. Croquetas de jamón o Bechamel"
         autoFocus
         mostrarTodasVacio
         maxSugerencias={12}
       />
-      {guardados.length === 0 && <p className="suave">{cfg.primera}</p>}
+      {guardados.length === 0 && <p className="suave">Es tu primera producción. Escribe su nombre: quedará guardado para las próximas veces.</p>}
     </div>
   );
 }
 
-function PasoNuevo({ nuevo, setNuevo }) {
+function PasoNuevo({ nuevo, setNuevo, interna, setInterna }) {
   const c = (p) => setNuevo((x) => ({ ...x, ...p }));
   return (
     <div className="pila">
+      <CasillaInterna interna={interna} setInterna={setInterna} />
       <Campo etiqueta="Nombre" id="pn-nombre">
         <input id="pn-nombre" className="entrada" value={nuevo.nombre} onChange={(e) => c({ nombre: e.target.value })} />
       </Campo>
@@ -253,13 +275,13 @@ function PasoNuevo({ nuevo, setNuevo }) {
 
 function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto }) {
   const cambiarFila = (k, p) => setFilas((l) => l.map((f) => (f.k === k ? { ...f, ...p } : f)));
-  const opciones = useMemo(() => catalogo.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.tipo === "preparado" ? "Producción intermedia" : p.unidad_medida, p })), [catalogo]);
+  const opciones = useMemo(() => catalogo.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.tipo === "preparado" ? `Producción interna · ${p.unidad_medida}` : p.unidad_medida, p })), [catalogo]);
 
   return (
     <div className="pila">
       {filas.map((f, i) => {
         const delProducto = f.producto ? lotes.filter((l) => l.producto_id === f.producto.id) : [];
-        const unidad = f.manual ? f.producto?.unidad_medida : f.lote?.unidad || f.producto?.unidad_medida;
+        const unidad = f.lote?.unidad || f.producto?.unidad_medida;
         return (
           <div key={f.k} className="ingrediente">
             <div className="cabeza">
@@ -275,7 +297,15 @@ function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto 
               onElegir={(o) => cambiarFila(f.k, conLotePorDefecto({ ...f, producto: o.p, texto: o.texto }))}
               placeholder="Escribe el ingrediente"
             />
-            {f.producto && (
+            {f.producto && !CONTROL_STOCK && (
+              <>
+                <LoteSugerido fila={f} lotes={delProducto} cambiar={(p) => cambiarFila(f.k, p)} />
+                <Campo etiqueta={`Cantidad usada${unidad ? ` (${unidad})` : ""}`} id={`cant-${f.k}`}>
+                  <input id={`cant-${f.k}`} className="entrada grande" inputMode="decimal" value={f.cantidad} onChange={(e) => cambiarFila(f.k, { cantidad: e.target.value })} />
+                </Campo>
+              </>
+            )}
+            {f.producto && CONTROL_STOCK && (
               <>
                 <div className="lotes" role="radiogroup" aria-label={`Lote de ${f.producto.nombre}`}>
                   {delProducto.map((l) => (
@@ -304,6 +334,44 @@ function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto 
         );
       })}
       <button className="boton bloque" onClick={() => setFilas((l) => [...l, filaVacia()])}><Plus size={20} aria-hidden /> Añadir ingrediente</button>
+    </div>
+  );
+}
+
+/**
+ * Fase 1: nº de lote del ingrediente. Al pulsar en el campo se despliegan los
+ * tres últimos lotes registrados de ese ingrediente; también se puede escribir
+ * otro a mano.
+ */
+function LoteSugerido({ fila, lotes, cambiar }) {
+  const opciones = lotes.map((l) => ({
+    id: `${l.origen}-${l.id}`,
+    texto: l.num_lote || "Sin nº de lote",
+    detalle: [l.origen === "preparado" ? "Producción interna" : "Entrada", fecha(l.fecha, { day: "numeric", month: "short", year: "numeric" }),
+      l.marca, l.proveedor, l.caducidad && `cad. ${fecha(l.caducidad, { day: "numeric", month: "short" })}`].filter(Boolean).join(" · "),
+    l,
+  }));
+  const texto = fila.lote ? fila.lote.num_lote || "Sin nº de lote" : fila.num_lote;
+  return (
+    <div className="pila" style={{ gap: 6 }}>
+      <Autocompletar
+        etiqueta="Nº de lote"
+        valor={texto}
+        onTexto={(t) => cambiar({ lote: null, manual: true, num_lote: t })}
+        opciones={opciones}
+        onElegir={(o) => cambiar({ lote: o.l, manual: false, num_lote: o.l.num_lote || "" })}
+        placeholder={opciones.length ? "Pulsa para ver los últimos lotes" : "Nº de lote del envase"}
+        titulo={opciones.length === 1 ? "Último lote" : opciones.length ? `Últimos ${opciones.length} lotes` : undefined}
+        mostrarTodasVacio
+        mostrarSiempre
+        maxSugerencias={3}
+      />
+      {fila.lote && (
+        <span className="suave pequeno fila" style={{ gap: 6 }}>
+          <CornerDownRight size={16} aria-hidden /> Enlazado con la {fila.lote.origen === "preparado" ? "producción interna" : "entrada"} del {fecha(fila.lote.fecha)}
+        </span>
+      )}
+      {!fila.lote && !opciones.length && <span className="suave pequeno">Aún no hay entradas de este ingrediente: anota el lote del envase.</span>}
     </div>
   );
 }
@@ -341,12 +409,13 @@ function PasoLote({ cfg, lote, setLote, unidad }) {
   );
 }
 
-function PasoRevisar({ cfg, datos, filas, lote, unidad, termico, obj, irA }) {
+function PasoRevisar({ cfg, interna, datos, filas, lote, unidad, termico, obj, irA }) {
   const r = termico ? evaluar(obj, termico, lote.fecha) : null;
   return (
     <div className="pila">
       <dl className="ficha panel">
-        <dt>{cfg.corto === "Final" ? "Producto final" : "Elaboración"}</dt><dd>{datos.nombre}</dd>
+        <dt>Producto</dt><dd>{datos.nombre}</dd>
+        <dt>Tipo</dt><dd>{interna ? "Producción interna" : "Producción final"}</dd>
         <dt>Lote</dt><dd>{lote.num_lote}</dd>
         <dt>Obtenido</dt><dd>{num(aNumero(lote.cantidad))} {unidad}{cfg.conUnidades && lote.unidades ? ` · ${lote.unidades} uds.` : ""}</dd>
         <dt>Fecha</dt><dd>{fecha(lote.fecha)}</dd>

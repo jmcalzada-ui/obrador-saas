@@ -9,7 +9,7 @@ import { obradorRouter } from "./routes/obrador.js";
 import { catalogoRouter } from "./routes/catalogo.js";
 import { recepcionesRouter } from "./routes/recepciones.js";
 import { altaRouter } from "./routes/alta.js";
-import { preparadosRouter, produccionesRouter, stockRouter } from "./routes/preparados.js";
+import { produccionRouter, preparadosRouter, produccionesRouter, stockRouter } from "./routes/preparados.js";
 import { adminRouter } from "./routes/admin.js";
 import { informesRouter } from "./routes/informes.js";
 import { stripeWebhookRouter } from "./routes/stripe-webhook.js";
@@ -26,8 +26,8 @@ export function crearApp() {
   // El aviso de Stripe necesita el cuerpo tal cual (firma): va antes de express.json().
   app.use("/api/stripe/webhook", stripeWebhookRouter);
   const json = express.json({ limit: "2mb" });
-  // La subida de fichas técnicas en PDF tiene su propio límite, mayor.
-  app.use((req, res, next) => (req.method === "PUT" && /\/ficha$/.test(req.path) ? next() : json(req, res, next)));
+  // La subida de fichas técnicas (PDF) y del logotipo tiene su propio límite.
+  app.use((req, res, next) => (req.method === "PUT" && /\/(ficha|logo)$/.test(req.path) ? next() : json(req, res, next)));
 
   app.get("/api/salud", (req, res) => res.json({ ok: true }));
   app.use("/api/auth", authRouter);
@@ -37,6 +37,7 @@ export function crearApp() {
   app.use("/api/recepciones", recepcionesRouter);
   app.use("/api/preparados", preparadosRouter);
   app.use("/api/producciones", produccionesRouter);
+  app.use("/api/produccion", produccionRouter);
   app.use("/api/stock", stockRouter);
   app.use("/api/informes", informesRouter);
   app.use("/api/alta", altaRouter);

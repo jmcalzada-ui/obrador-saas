@@ -50,6 +50,11 @@ export const config = {
     diasSuspension: Number(process.env.DIAS_SUSPENSION_IMPAGO) || 10,
   },
 
+  // Control de stock (descontar lo usado y avisar si falta). Desactivado en
+  // la fase 1: la cantidad de cada entrada se anota, pero no se descuenta.
+  // Se activará en la fase 2 con CONTROL_STOCK=1.
+  controlStock: process.env.CONTROL_STOCK === "1",
+
   // Precios del plan (para mostrar y calcular el importe; Stripe cobra lo suyo).
   // Mensual: básico 29,90 + módulos (escandallos, precios y lectura por IA 20 · APPCC temperaturas 10) + 3 por usuario extra.
   // Anual básico: 2 meses gratis (10 cuotas). Anual completo (todos los módulos): 3 meses gratis (9 cuotas).

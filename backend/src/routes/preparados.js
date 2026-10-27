@@ -14,6 +14,7 @@ import { z } from "zod";
 import { requireAuth, requirePermiso, db } from "../auth/middleware.js";
 import { ruta, validar } from "../lib/utiles.js";
 import { insertarProducto, UNIDADES } from "./catalogo.js";
+import { config } from "../config.js";
 
 /** Estado del control térmico de un lote frente a los objetivos de su producto. */
 export function evaluarTermico(p) {
@@ -233,7 +234,7 @@ function crearRouter(cfg) {
       if (cantidad > Number(l.disponible) + 1e-9) faltas.push(`${l.producto} (lote ${l.num_lote || "sin nº"}): pides ${cantidad} ${l.unidad} y quedan ${l.disponible}`);
       lotes.set(origenId, l);
     }
-    if (faltas.length) throw fallo(`No hay stock suficiente: ${faltas.join("; ")}.`, 409, { codigo: "sin_stock" });
+    if (faltas.length && config.controlStock) throw fallo(`No hay stock suficiente: ${faltas.join("; ")}.`, 409, { codigo: "sin_stock" });
     const productos = new Set();
     for (const i of ingredientes) {
       if (i.origen === "manual") {
@@ -435,6 +436,59 @@ function crearRouter(cfg) {
 export const CONFIG_ELABORACION = CONFIG;
 export const preparadosRouter = crearRouter(CONFIG.intermedia);
 export const produccionesRouter = crearRouter(CONFIG.final);
+
+// ---------- Producción (vista conjunta) ----------
+// En la interfaz hay un único apartado "Producción": las internas (se usan
+// como ingrediente) y las finales (se venden) salen juntas con la columna
+// "interna" para filtrar y ordenar.
+export const esquemaProduccion = esquemaFiltros.extend({ interna: z.enum(["1", "0"]).optional() });
+
+/** Lotes de producción de los dos tipos, del más reciente al más antiguo. */
+export async function listarProduccion(c, f) {
+  const tipos = f.interna === "1" ? ["intermedia"] : f.interna === "0" ? ["final"] : ["intermedia", "final"];
+  let filas = [];
+  for (const t of tipos) {
+    const cfg = CONFIG[t];
+    const { where, params } = filtrosElaboracion(f, cfg);
+    const { rows } = await c.query(`${selectElaboracion(cfg)} ${where} ORDER BY pp.fecha DESC, pp.creado_en DESC LIMIT $${params.push(f.limite)}`, params);
+    filas = filas.concat(rows.map((r) => ({ ...conTermico(r), interna: t === "intermedia", clase: t })));
+  }
+  filas.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || new Date(b.creado_en) - new Date(a.creado_en));
+  return filas.slice(0, f.limite);
+}
+
+export const produccionRouter = Router();
+produccionRouter.use(requireAuth);
+
+produccionRouter.get(
+  "/",
+  ruta(async (req, res) => {
+    const f = validar(esquemaProduccion, req.query, res);
+    if (!f) return;
+    res.json({ produccion: await db(req, (c) => listarProduccion(c, f)) });
+  })
+);
+
+// Los tres últimos lotes de cada ingrediente (entradas de mercancía y
+// producción interna), para proponerlos al escribir una elaboración.
+produccionRouter.get(
+  "/ultimos-lotes",
+  ruta(async (req, res) => {
+    const lotes = await db(req, async (c) => (await c.query(
+      `SELECT origen, id, producto_id, num_lote, fecha, caducidad, unidad, marca, proveedor FROM (
+         SELECT 'recepcion' AS origen, r.id, r.producto_id, r.num_lote, r.fecha, r.caducidad, r.unidad, m.nombre AS marca, pr.nombre AS proveedor,
+                row_number() OVER (PARTITION BY r.producto_id ORDER BY r.fecha DESC, r.creado_en DESC) AS n
+           FROM recepciones r LEFT JOIN marcas m ON m.id = r.marca_id LEFT JOIN proveedores pr ON pr.id = r.proveedor_id
+          WHERE r.activo
+         UNION ALL
+         SELECT 'preparado', pp.id, pp.producto_id, pp.num_lote, pp.fecha, pp.caducidad, pp.unidad, NULL, NULL,
+                row_number() OVER (PARTITION BY pp.producto_id ORDER BY pp.fecha DESC, pp.creado_en DESC)
+           FROM preparados pp WHERE pp.activo
+       ) t WHERE n <= 3 ORDER BY producto_id, fecha DESC, n`
+    )).rows);
+    res.json({ lotes });
+  })
+);
 
 // Lotes disponibles para usar como ingrediente (entradas y producción intermedia con stock).
 export const stockRouter = Router();

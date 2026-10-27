@@ -434,3 +434,39 @@ table.datos-tabla tbody tr:nth-child(even) { background: #fafbfb; }
 table.datos-tabla tbody tr:hover { background: var(--azul-claro); }
 table.datos-tabla tbody tr:focus-visible { outline: 3px solid var(--azul); outline-offset: -3px; }
 .lote-tabla { font-family: var(--rotulo); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---------- Logotipo del obrador ---------- */
+.logo-casilla { min-height: 96px; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1.5px dashed var(--linea); border-radius: var(--radio-sm); background: #fafbfb; }
+.logo-casilla img { max-width: 100%; max-height: 120px; object-fit: contain; }
+.logo-cabecera { height: 40px; max-width: 96px; object-fit: contain; flex-shrink: 0; }
+@media (min-width: 1024px) {
+  .logo-cabecera { display: none; } /* en ordenador ya está en la barra lateral */
+  .nav-marca.con-logo { flex-direction: column; align-items: flex-start; }
+  .nav-marca .logo { max-width: 100%; max-height: 64px; object-fit: contain; }
+}
+
+/* Títulos de columna que ordenan */
+table.datos-tabla th .ordenar {
+  border: 0; background: none; padding: 0; cursor: pointer; font: inherit; color: inherit;
+  display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+}
+table.datos-tabla th .ordenar svg { opacity: 0.45; }
+table.datos-tabla th .ordenar.activa { color: var(--azul); }
+table.datos-tabla th .ordenar.activa svg { opacity: 1; }
+table.datos-tabla th.num .ordenar { flex-direction: row-reverse; }
+.sugerencias-titulo { padding: 6px 14px 4px; font-size: 0.8rem; font-weight: 700; color: var(--tinta-suave); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Casilla grande (p. ej. "Producción interna") */
+.casilla {
+  display: flex; gap: 12px; align-items: flex-start; cursor: pointer;
+  padding: 14px; border: 1.5px solid var(--linea); border-radius: var(--radio-sm); background: var(--superficie);
+}
+.casilla:has(input:checked) { border-color: var(--azul); background: var(--azul-claro); }
+.casilla input { width: 24px; height: 24px; margin: 2px 0 0; accent-color: var(--azul); flex-shrink: 0; }
+.casilla > span { display: flex; flex-direction: column; gap: 2px; }
+button.dato { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+button.dato:hover { border-color: #b9c3be; }
+@media (min-width: 1024px) {
+  .accion-fija .fila.doble { min-width: 0; background: none; border: 0; box-shadow: none; padding: 0; gap: 10px; }
+  .accion-fija .fila.doble > * { box-shadow: 0 6px 20px rgba(30, 78, 140, 0.28); padding: 0 24px; }
+}

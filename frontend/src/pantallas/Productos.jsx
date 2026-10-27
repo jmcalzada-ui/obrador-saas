@@ -12,14 +12,14 @@ const CONSERVACION = { ambiente: "Ambiente", refrigerado: "Refrigerado", congela
 const ir = (p) => (window.location.hash = `/productos/${p.id}`);
 
 const COLUMNAS = [
-  { titulo: "Producto", ajustar: true, celda: (p) => <strong>{p.nombre}</strong> },
+  { titulo: "Producto", ajustar: true, celda: (p) => <strong>{p.nombre}</strong>, orden: (p) => p.nombre },
   { titulo: "Marcas", ajustar: true, celda: (p) => (p.marcas.length ? p.marcas.map((m) => m.nombre).join(", ") : <span className="suave">Sin marcas</span>) },
-  { titulo: "Categoría", ajustar: true, celda: (p) => p.categoria || "—" },
+  { titulo: "Categoría", ajustar: true, celda: (p) => p.categoria || "—", orden: (p) => p.categoria || "" },
   { titulo: "Ud.", celda: (p) => p.unidad_medida, ancho: 60 },
-  { titulo: "Conservación", celda: (p) => CONSERVACION[p.conservacion] || "—" },
+  { titulo: "Conservación", celda: (p) => CONSERVACION[p.conservacion] || "—", orden: (p) => p.conservacion || "" },
   { titulo: "Último precio", num: true, celda: (p) => (p.ultimo_precio != null ? `${euros(p.ultimo_precio)}/${p.unidad_medida}` : "—") },
   { titulo: "Fichas", num: true, celda: (p) => { const n = p.marcas.filter((m) => m.tiene_ficha).length; return n ? <span className="fila" style={{ justifyContent: "flex-end", gap: 4 }}><FileText size={16} aria-hidden />{n}</span> : "—"; } },
-  { titulo: "Alta", celda: (p) => fecha(p.creado_en) },
+  { titulo: "Alta", celda: (p) => fecha(p.creado_en), orden: (p) => p.creado_en },
   { titulo: "Estado", celda: (p) => (p.activo ? <span className="distintivo verde">Activo</span> : <span className="distintivo">De baja</span>) },
 ];
 

@@ -4,11 +4,11 @@ import { api } from "../api.js";
 import { useToast } from "./ui.jsx";
 
 /**
- * Barra de filtros común a Productos, Entradas, Producción intermedia y
- * Producto final: lupa por producto, rango de fechas y descarga de lo que
+ * Barra de filtros común a Productos, Entradas y Producción
+ * (Producción: interna y final): lupa por producto, rango de fechas y descarga de lo que
  * se está viendo en Excel o PDF (A4 apaisado, en casillas).
  */
-const NOMBRE = { productos: "productos", entradas: "entradas", intermedia: "produccion-intermedia", final: "producto-final" };
+const NOMBRE = { productos: "productos", entradas: "entradas", produccion: "produccion" };
 
 export default function Filtros({ f, setF, placeholder, informe, parametros = {}, etiquetaFechas = "Fecha", children }) {
   const toast = useToast();
@@ -24,7 +24,7 @@ export default function Filtros({ f, setF, placeholder, informe, parametros = {}
     setBajando(formato);
     try {
       const sufijo = [f.desde, f.hasta].filter(Boolean).join("_") || new Date().toISOString().slice(0, 10);
-      await api.descargar(`/informes/${informe}?${p}`, `${NOMBRE[informe] || informe}_${sufijo}.${formato}`, formato === "pdf");
+      await api.descargar(`/informes/${informe}?${p}`, `${parametros.interna === "1" ? "produccion-interna" : parametros.interna === "0" ? "produccion-final" : NOMBRE[informe] || informe}_${sufijo}.${formato}`, formato === "pdf");
     } catch (e) {
       toast(e.message);
     } finally {

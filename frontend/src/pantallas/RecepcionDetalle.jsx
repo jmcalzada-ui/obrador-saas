@@ -83,10 +83,10 @@ export default function RecepcionDetalle({ id }) {
                   {datos.usos.map((u, i) => (
                     <li key={i}>
                       <div className="item" role="link"
-                        onClick={() => (window.location.hash = u.destino_tipo === "preparado" ? `/intermedia/${u.destino_id}` : `/final/${u.destino_id}`)}>
+                        onClick={() => (window.location.hash = u.destino_tipo === "preparado" ? `/produccion/i/${u.destino_id}` : `/produccion/f/${u.destino_id}`)}>
                         <span className="principal">
                           <strong>Lote {u.lote_destino}</strong>
-                          <span className="suave pequeno">{u.destino_tipo === "preparado" ? "Producción intermedia" : "Producto final"} · {fecha(u.fecha)}</span>
+                          <span className="suave pequeno">{u.destino_tipo === "preparado" ? "Producción interna" : "Producción final"} · {fecha(u.fecha)}</span>
                         </span>
                         <span className="numero">{num(u.cantidad)} {u.unidad}</span>
                       </div>

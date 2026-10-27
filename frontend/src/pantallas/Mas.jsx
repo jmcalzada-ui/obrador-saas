@@ -2,6 +2,7 @@ import React from "react";
 import { Users, Store, UserRound, LogOut, ChevronRight } from "lucide-react";
 import { useSesion, NOMBRE_ROL } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
+import { SubirLogo } from "../componentes/Logo.jsx";
 
 export default function Mas() {
   const { usuario, puede, salir } = useSesion();
@@ -19,6 +20,7 @@ export default function Mas() {
           <strong>{usuario.nombre}</strong>
           <div className="suave">{NOMBRE_ROL[usuario.rol]} · {usuario.email}</div>
         </div>
+        <SubirLogo />
         <ul className="lista">
           {entradas.map(({ ruta, icono: Icono, texto, desc }) => (
             <li key={ruta}>

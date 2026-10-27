@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Home, Truck, CookingPot, ChefHat, Package, Menu, CreditCard } from "lucide-react";
+import { Home, Truck, CookingPot, Package, Menu, CreditCard } from "lucide-react";
 import { api, sesion } from "./api.js";
 import { SesionContext, ProveedorToast, Cargando, Aviso, fecha } from "./componentes/ui.jsx";
 import Login from "./pantallas/Login.jsx";
@@ -8,14 +8,15 @@ import Inicio from "./pantallas/Inicio.jsx";
 import Recepciones from "./pantallas/Recepciones.jsx";
 import NuevaRecepcion from "./pantallas/NuevaRecepcion.jsx";
 import RecepcionDetalle from "./pantallas/RecepcionDetalle.jsx";
-import Preparados from "./pantallas/Preparados.jsx";
-import NuevoPreparado from "./pantallas/NuevoPreparado.jsx";
-import PreparadoDetalle from "./pantallas/PreparadoDetalle.jsx";
+import Produccion from "./pantallas/Produccion.jsx";
+import NuevaProduccion from "./pantallas/NuevaProduccion.jsx";
+import ProduccionDetalle from "./pantallas/ProduccionDetalle.jsx";
 import Productos from "./pantallas/Productos.jsx";
 import ProductoDetalle from "./pantallas/ProductoDetalle.jsx";
 import Mas from "./pantallas/Mas.jsx";
 import Equipo from "./pantallas/Equipo.jsx";
 import MiObrador from "./pantallas/MiObrador.jsx";
+import { useLogo } from "./componentes/Logo.jsx";
 
 // Navegación por #ruta: funciona con el botón atrás del móvil y al recargar.
 function useRuta() {
@@ -34,8 +35,7 @@ const SECCIONES = [
   { id: "inicio", texto: "Inicio", icono: Home },
   { id: "productos", texto: "Productos", icono: Package },
   { id: "entradas", texto: "Entradas", largo: "Entradas de mercancía", icono: Truck },
-  { id: "intermedia", texto: "Intermedia", largo: "Producción intermedia", icono: CookingPot },
-  { id: "final", texto: "Final", largo: "Producto final", icono: ChefHat },
+  { id: "produccion", texto: "Producción", icono: CookingPot },
   { id: "mas", texto: "Más", largo: "Equipo y cuenta", icono: Menu },
 ];
 
@@ -87,17 +87,21 @@ export default function App() {
 
 function Shell() {
   const { obrador } = React.useContext(SesionContext);
+  const logo = useLogo();
   const ruta = useRuta();
   const partes = ruta.split("/").filter(Boolean);
-  // Enlaces antiguos: #/preparados → #/intermedia
-  const seccion = partes[0] === "preparados" ? "intermedia" : partes[0] || "inicio";
-  const [a, b] = [partes[1], partes[2]];
+  // Enlaces antiguos (#/preparados, #/intermedia, #/final) → #/produccion
+  const antiguo = { preparados: "i", intermedia: "i", final: "f" }[partes[0]];
+  const seccion = antiguo ? "produccion" : partes[0] || "inicio";
+  let [a, b] = [partes[1], partes[2]];
+  if (antiguo && a && a !== "nuevo") [a, b] = [antiguo, a];
 
   let pantalla;
   if (seccion === "entradas") pantalla = a === "nueva" ? <NuevaRecepcion /> : a ? <RecepcionDetalle id={a} /> : <Recepciones />;
-  else if (seccion === "intermedia" || seccion === "final") {
-    const k = `${seccion}-${a || ""}`;
-    pantalla = a === "nuevo" ? <NuevoPreparado key={k} tipo={seccion} /> : a ? <PreparadoDetalle key={k} id={a} tipo={seccion} /> : <Preparados key={k} tipo={seccion} />;
+  else if (seccion === "produccion") {
+    if (a === "nueva" || a === "nuevo") pantalla = <NuevaProduccion />;
+    else if ((a === "i" || a === "f") && b) pantalla = <ProduccionDetalle key={`${a}-${b}`} id={b} tipo={a === "i" ? "intermedia" : "final"} />;
+    else pantalla = <Produccion />;
   }
   else if (seccion === "productos") pantalla = a ? <ProductoDetalle id={a} /> : <Productos />;
   else if (seccion === "mas" && a === "equipo") pantalla = <Equipo />;
@@ -105,16 +109,15 @@ function Shell() {
   else if (seccion === "mas" && a === "cuenta") pantalla = <CambiarPassword />;
   else if (seccion === "mas") pantalla = <Mas />;
   else pantalla = <Inicio />;
-  void b;
 
   return (
     <div className="app">
       <AvisoImpago />
       {pantalla}
       <nav className="nav" aria-label="Secciones" style={{ "--secciones": SECCIONES.length }}>
-        <div className="nav-marca" aria-hidden>
-          <img src="/icono.svg" alt="" width="36" height="36" />
-          <span><strong>Registro de obrador</strong><small>{obrador.nombre}</small></span>
+        <div className={`nav-marca ${logo ? "con-logo" : ""}`} aria-hidden>
+          {logo ? <img className="logo" src={logo} alt="" /> : <img src="/icono.svg" alt="" width="36" height="36" />}
+          <span><strong>{logo ? obrador.nombre : "Registro de obrador"}</strong><small>{logo ? "Registro de obrador" : obrador.nombre}</small></span>
         </div>
         {SECCIONES.map(({ id, texto, largo, icono: Icono }) => (
           <button key={id} aria-current={seccion === id ? "page" : undefined} onClick={() => (window.location.hash = `/${id}`)}>

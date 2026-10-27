@@ -29,7 +29,7 @@ export default function ProductoDetalle({ id }) {
   useEffect(() => { cargar(); }, [id]);
 
   const esPreparado = producto?.tipo === "preparado" || producto?.tipo === "elaborado";
-  const volver = producto?.tipo === "preparado" ? "/intermedia" : producto?.tipo === "elaborado" ? "/final" : "/productos";
+  const volver = esPreparado ? "/produccion" : "/productos";
 
   return (
     <>

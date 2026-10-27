@@ -6,12 +6,13 @@ import ControlTermico, { aISO, horaAhora, evaluar } from "../componentes/Control
 import EstadoTermico from "../componentes/EstadoTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import { ELABORACION, rutaLote } from "../componentes/elaboracion.js";
+import { CONTROL_STOCK } from "../componentes/fase.js";
 
 const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "");
 const horaInput = (iso) => (iso ? new Date(iso).toTimeString().slice(0, 5) : "");
 const txt = (v) => (v == null ? "" : String(v).replace(".", ","));
 
-export default function PreparadoDetalle({ id, tipo = "intermedia" }) {
+export default function ProduccionDetalle({ id, tipo = "final" }) {
   const cfg = ELABORACION[tipo];
   const { puede } = useSesion();
   const toast = useToast();
@@ -39,7 +40,7 @@ export default function PreparadoDetalle({ id, tipo = "intermedia" }) {
 
   return (
     <>
-      <Cabecera titulo={cfg.detalleTitulo} volver={cfg.ruta}
+      <Cabecera titulo={cfg.titulo} volver="/produccion"
         accion={p && puede("editar") && <button className="boton-icono" aria-label="Editar" onClick={() => setHoja("editar")}><Pencil size={22} /></button>} />
       <main className="contenido">
         {error && <Aviso tipo="error">{error}</Aviso>}
@@ -52,10 +53,10 @@ export default function PreparadoDetalle({ id, tipo = "intermedia" }) {
                 <div className="lote">{p.num_lote}</div>
               </div>
               <div className="cantidad">
-                <strong>{num(cfg.conStock ? p.disponible : p.cantidad)}</strong> <span className="suave">{p.unidad}</span>
-                <div className="pequeno suave">{cfg.conStock ? `de ${num(p.cantidad)}` : p.unidades != null ? `${num(p.unidades)} uds.` : "elaborado"}</div>
+                <strong>{num(cfg.conStock && CONTROL_STOCK ? p.disponible : p.cantidad)}</strong> <span className="suave">{p.unidad}</span>
+                <div className="pequeno suave">{cfg.conStock && CONTROL_STOCK ? `de ${num(p.cantidad)}` : p.unidades != null ? `${num(p.unidades)} uds.` : "elaborado"}</div>
               </div>
-              <div className="meta"><EstadoTermico control={t} />{!p.activo && <span className="distintivo">De baja</span>}</div>
+              <div className="meta"><span className={`distintivo ${cfg.interna ? "azul" : ""}`}>{cfg.interna ? "Producción interna" : "Producción final"}</span><EstadoTermico control={t} />{!p.activo && <span className="distintivo">De baja</span>}</div>
             </div>
 
             <dl className="ficha panel">
@@ -101,7 +102,7 @@ export default function PreparadoDetalle({ id, tipo = "intermedia" }) {
                       <span className="principal">
                         <strong>{i.producto}</strong>
                         <span className="suave pequeno">
-                          Lote {i.num_lote || "sin nº"}{i.marca ? ` · ${i.marca}` : ""}{i.origen === "manual" ? " · anotado a mano" : i.origen === "preparado" ? " · producción intermedia" : ""}
+                          Lote {i.num_lote || "sin nº"}{i.marca ? ` · ${i.marca}` : ""}{i.origen === "manual" ? " · anotado a mano" : i.origen === "preparado" ? " · producción interna" : ""}
                         </span>
                       </span>
                       <span className="numero">{num(i.cantidad)} {i.unidad}</span>
@@ -146,7 +147,7 @@ export default function PreparadoDetalle({ id, tipo = "intermedia" }) {
       {hoja === "editar" && <EditarPreparado cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Cambios guardados"); cargar(); }} />}
       {hoja === "borrar" && (
         <Hoja titulo="¿Eliminar este lote?" onCerrar={() => setHoja(null)}>
-          <p>Se borrará el lote {p.num_lote} y se devolverá al stock lo que consumió.</p>
+          <p>Se borrará el lote {p.num_lote} con sus ingredientes y controles. No se puede deshacer.</p>
           <button className="boton peligro grande bloque" onClick={borrar}><Trash2 size={20} aria-hidden /> Eliminar</button>
           <button className="boton bloque" onClick={() => setHoja(null)}>Cancelar</button>
         </Hoja>
