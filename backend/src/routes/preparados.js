@@ -19,7 +19,10 @@ import { generarDeclaracion } from "../lib/declaracion.js";
 
 /** Estado del control térmico de un lote frente a los objetivos de su producto. */
 export function evaluarTermico(p) {
-  if (!p.proceso_termico) return { estado: "no_aplica" };
+  // Con proceso térmico: cocción + abatimiento. Congelado: congelación (en las
+  // casillas del abatimiento, con objetivo de congelación). Las dos cosas a la vez, ambas.
+  if (!aplicaControl(p)) return { estado: "no_aplica" };
+  p = { ...p, ...objetivosEnfriado(p) };
   const coccionOk = p.coccion_temp != null ? Number(p.coccion_temp) >= Number(p.coccion_temp_min) : null;
   let abatMinutos = null;
   let abatOk = null;
@@ -29,8 +32,21 @@ export function evaluarTermico(p) {
   }
   let estado = "ok";
   if (coccionOk === false || abatOk === false) estado = "fuera_de_rango";
-  else if (coccionOk === null || abatOk === null) estado = "pendiente";
-  return { estado, coccion_ok: coccionOk, abat_ok: abatOk, abat_minutos: abatMinutos };
+  else if ((p.proceso_termico && coccionOk === null) || abatOk === null) estado = "pendiente";
+  return { estado, coccion_ok: coccionOk, abat_ok: abatOk, abat_minutos: abatMinutos, congelado: p.congelado,
+           objetivo_temp: Number(p.abatimiento_temp_max), objetivo_minutos: Number(p.abatimiento_minutos_max) };
+}
+
+/** ¿Lleva control de temperaturas? (cocción/abatimiento o congelación) */
+export const aplicaControl = (p) => Boolean(p.proceso_termico) || p.conservacion === "congelado";
+/** Objetivo de enfriado: abatimiento (10 °C en 2 h) o congelación (−18 °C en 4 h). */
+export function objetivosEnfriado(p) {
+  const congelado = p.conservacion === "congelado";
+  return {
+    congelado,
+    abatimiento_temp_max: p.abatimiento_temp_max ?? (congelado ? -18 : 10),
+    abatimiento_minutos_max: p.abatimiento_minutos_max ?? (congelado ? 240 : 120),
+  };
 }
 
 const conTermico = (r) => ({ ...r, control_termico: evaluarTermico(r) });
@@ -54,9 +70,9 @@ const CONFIG = {
 export function selectElaboracion(cfg) {
   return `
   SELECT pp.id, pp.fecha, pp.producto_id, p.nombre AS producto, pp.num_lote, pp.responsable, pp.cantidad, pp.unidad,
-         ${cfg.tabla === "producciones" ? "pp.unidades" : "NULL::int AS unidades"},
+         pp.unidades, pp.unidades_tipo,
          pp.caducidad, pp.observaciones, pp.activo, ${cfg.conStock ? "s.disponible" : "NULL::numeric AS disponible"},
-         p.proceso_termico, p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max,
+         p.proceso_termico, p.conservacion, p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max,
          pp.coccion_temp, pp.coccion_minutos, pp.abat_temp_inicio, pp.abat_hora_inicio, pp.abat_temp_fin, pp.abat_hora_fin,
          pp.medida_correctora, pp.declaracion_ingredientes, pp.creado_en, pp.modificado_en,
          uc.nombre AS creado_por_nombre, um.nombre AS modificado_por_nombre
@@ -125,7 +141,7 @@ const camposTermicos = {
 // Columnas que tienen los dos tipos de lote (para pasar un lote de uno a otro).
 const COLUMNAS_LOTE = ["obrador_id", "fecha", "producto_id", "num_lote", "responsable", "cantidad", "unidad", "observaciones", "activo",
   "caducidad", "coccion_temp", "coccion_minutos", "abat_temp_inicio", "abat_hora_inicio", "abat_temp_fin", "abat_hora_fin",
-  "medida_correctora", "declaracion_ingredientes", "creado_por", "creado_en"];
+  "medida_correctora", "declaracion_ingredientes", "unidades", "unidades_tipo", "creado_por", "creado_en"];
 
 /**
  * Pasa un lote de producción interna a final o al revés, con sus
@@ -234,6 +250,7 @@ function crearRouter(cfg) {
     num_lote: z.string().trim().min(1, "Indica el nº de lote.").max(80),
     cantidad: z.number({ invalid_type_error: "Indica la cantidad obtenida." }).positive("La cantidad obtenida debe ser mayor que 0."),
     unidades: z.number().int().min(0).max(10000000).nullable().optional(),
+    unidades_tipo: z.string().trim().max(40).default(""),
     caducidad: z.string().date().nullable().optional(),
     responsable: z.string().trim().max(80).default(""),
     observaciones: z.string().max(2000).default(""),
@@ -328,13 +345,13 @@ function crearRouter(cfg) {
           exigirCorrectora(producto, d);
           const caducidad = d.caducidad ?? (producto.vida_util_dias
             ? new Date(new Date(d.fecha).getTime() + producto.vida_util_dias * 86400000).toISOString().slice(0, 10) : null);
-          const extraCol = cfg.tabla === "producciones" ? ", unidades, estado" : "";
-          const extraVal = cfg.tabla === "producciones" ? ", $18, 'completada'" : "";
+          const extraCol = cfg.tabla === "producciones" ? ", unidades, unidades_tipo, estado" : ", unidades, unidades_tipo";
+          const extraVal = cfg.tabla === "producciones" ? ", $18, $19, 'completada'" : ", $18, $19";
           const valores = [req.usuario.obrador_id, d.fecha, producto.id, d.num_lote, d.responsable || req.usuario.nombre, d.cantidad,
             producto.unidad_medida, caducidad, d.observaciones, d.coccion_temp ?? null, d.coccion_minutos ?? null,
             d.abat_temp_inicio ?? null, d.abat_hora_inicio ?? null, d.abat_temp_fin ?? null, d.abat_hora_fin ?? null,
             d.medida_correctora ?? "", req.usuario.id];
-          if (cfg.tabla === "producciones") valores.push(d.unidades ?? null);
+          valores.push(d.unidades ?? null, d.unidades ?? null ? d.unidades_tipo : "");
           const { rows: [{ id }] } = await c.query(
             `INSERT INTO ${cfg.tabla} (obrador_id, fecha, producto_id, num_lote, responsable, cantidad, unidad, caducidad, observaciones,
                                        coccion_temp, coccion_minutos, abat_temp_inicio, abat_hora_inicio, abat_temp_fin, abat_hora_fin,
@@ -374,7 +391,7 @@ function crearRouter(cfg) {
         const lote = await db(req, async (c) => {
           const { rows: [actual] } = await c.query(`${SELECT} WHERE pp.id = $1 FOR UPDATE OF pp`, [req.params.id]);
           if (!actual) throw fallo("Lote no encontrado.", 404);
-          if (!actual.proceso_termico) throw fallo(`${cfg.articulo} no lleva proceso térmico.`, 400);
+          if (!aplicaControl(actual)) throw fallo(`${cfg.articulo} no lleva control de abatimiento ni de congelación.`, 400);
           if (actual.abat_hora_fin) throw fallo("El abatimiento ya está registrado.", 409);
           const nuevo = {
             ...actual,
@@ -409,6 +426,7 @@ function crearRouter(cfg) {
         num_lote: z.string().trim().min(1).max(80).optional(),
         cantidad: z.number().positive().optional(),
         unidades: z.number().int().min(0).max(10000000).nullable().optional(),
+        unidades_tipo: z.string().trim().max(40).optional(),
         caducidad: z.string().date().nullable().optional(),
         responsable: z.string().trim().max(80).optional(),
         observaciones: z.string().max(2000).optional(),
@@ -433,7 +451,6 @@ function crearRouter(cfg) {
           const SEL = selectElaboracion(destino);
           const { rows: [actual] } = await c.query(`${SEL} WHERE pp.id = $1 FOR UPDATE OF pp`, [req.params.id]);
           if (!actual) throw fallo("Lote no encontrado.", 404);
-          if (destino.tabla !== "producciones") delete campos.unidades;
           if (campos.producto_id && campos.producto_id !== actual.producto_id) {
             const { rows: [np] } = await c.query("SELECT unidad_medida FROM productos WHERE id = $1 AND tipo IN ('preparado', 'elaborado')", [campos.producto_id]);
             if (!np) throw fallo("Ese producto no existe.", 400);
@@ -446,7 +463,7 @@ function crearRouter(cfg) {
             const usado = Number(actual.cantidad) - Number(actual.disponible);
             if (campos.cantidad < usado) throw fallo(`Ya se han usado ${usado} ${actual.unidad} de este lote; la cantidad no puede ser menor.`, 409);
           }
-          if (actual.proceso_termico && claves.some((k) => k.startsWith("coccion") || k.startsWith("abat"))) exigirCorrectora(actual, { ...actual, ...campos });
+          if (aplicaControl(actual) && claves.some((k) => k.startsWith("coccion") || k.startsWith("abat"))) exigirCorrectora(actual, { ...actual, ...campos });
           if (claves.length || destino !== cfg) {
             const sets = [...claves.map((k, i) => `${k} = $${i + 2}`), `modificado_por = $${claves.length + 2}`, "modificado_en = now()"];
             await c.query(`UPDATE ${destino.tabla} SET ${sets.join(", ")} WHERE id = $1`, [req.params.id, ...claves.map((k) => campos[k]), req.usuario.id]);

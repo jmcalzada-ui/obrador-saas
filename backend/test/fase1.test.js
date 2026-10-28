@@ -170,3 +170,29 @@ test("catálogo editable por completo: nombre, unidad (con conversión), marcas 
   // Un proveedor con entradas no se borra
   assert.equal((await O.api.delete(`/api/catalogo/proveedores/${prov.id}`)).status, 409);
 });
+
+test("producción congelada: control de congelación (−18 °C) y unidades con su tipo", async () => {
+  const base = {
+    nuevo: { nombre: "Croquetas congeladas", unidad_medida: "kg", proceso_termico: false, conservacion: "congelado" },
+    fecha: "2026-10-20", cantidad: 12, unidades: 40, unidades_tipo: "bandejas",
+    ingredientes: [{ origen: "manual", producto_id: harina.id, num_lote: "H-9", cantidad: 1 }],
+  };
+  const a = await O.api.post("/api/producciones", { ...base, num_lote: "CC-1" });
+  assert.equal(a.status, 201, JSON.stringify(a.body));
+  assert.equal(a.body.produccion.unidades_tipo, "bandejas");
+  assert.equal(a.body.produccion.control_termico.estado, "pendiente");
+  assert.equal(a.body.produccion.control_termico.congelado, true);
+  assert.equal(a.body.produccion.control_termico.objetivo_temp, -18);
+  const prod = a.body.produccion.producto_id;
+  // Llega a −20 °C en 3 h: correcto
+  const ok = await O.api.post(`/api/producciones/${a.body.produccion.id}/abatimiento`, {
+    abat_temp_inicio: 20, abat_hora_inicio: "2026-10-20T10:00:00Z", abat_temp_fin: -20, abat_hora_fin: "2026-10-20T13:00:00Z",
+  });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.produccion.control_termico.estado, "ok");
+  // Solo llega a −10 °C: fuera de rango, exige medida correctora
+  const mal = await O.api.post("/api/producciones", { ...base, nuevo: undefined, producto_id: prod, num_lote: "CC-2",
+    abat_temp_inicio: 20, abat_hora_inicio: "2026-10-21T10:00:00Z", abat_temp_fin: -10, abat_hora_fin: "2026-10-21T13:00:00Z" });
+  assert.equal(mal.status, 400);
+  assert.equal(mal.body.campo, "medida_correctora");
+});

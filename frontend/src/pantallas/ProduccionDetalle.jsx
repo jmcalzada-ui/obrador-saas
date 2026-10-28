@@ -54,7 +54,7 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
               </div>
               <div className="cantidad">
                 <strong>{num(cfg.conStock && CONTROL_STOCK ? p.disponible : p.cantidad)}</strong> <span className="suave">{p.unidad}</span>
-                <div className="pequeno suave">{cfg.conStock && CONTROL_STOCK ? `de ${num(p.cantidad)}` : p.unidades != null ? `${num(p.unidades)} uds.` : "elaborado"}</div>
+                <div className="pequeno suave">{cfg.conStock && CONTROL_STOCK ? `de ${num(p.cantidad)}` : p.unidades != null ? `${num(p.unidades)} ${p.unidades_tipo || "uds."}` : "elaborado"}</div>
               </div>
               <div className="meta"><span className={`distintivo ${cfg.interna ? "azul" : ""}`}>{cfg.interna ? "Producción interna" : "Producción final"}</span><EstadoTermico control={t} />{!p.activo && <span className="distintivo">De baja</span>}</div>
             </div>
@@ -68,26 +68,28 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
               {p.modificado_en && <><dt>Modificó</dt><dd>{p.modificado_por_nombre} · {fecha(p.modificado_en)}</dd></>}
             </dl>
 
-            {p.proceso_termico && (
+            {t.estado !== "no_aplica" && (
               <section className="panel pila">
                 <h2>Control térmico</h2>
                 <dl className="ficha">
+                  {p.proceso_termico && <>
                   <dt>Cocción</dt>
                   <dd>
                     {p.coccion_temp != null ? `${num(p.coccion_temp)} °C · ${p.coccion_minutos ?? "—"} min` : "—"}
                     <div className="suave pequeno" style={{ fontWeight: 400 }}>Objetivo ≥ {p.coccion_temp_min} °C {t.coccion_ok === false && "· fuera de objetivo"}</div>
                   </dd>
-                  <dt>Abatimiento</dt>
+                  </>}
+                  <dt>{t.congelado ? "Congelación" : "Abatimiento"}</dt>
                   <dd>
                     {p.abat_hora_fin
                       ? `${num(p.abat_temp_inicio)} °C (${hora(p.abat_hora_inicio)}) → ${num(p.abat_temp_fin)} °C (${hora(p.abat_hora_fin)}) · ${t.abat_minutos} min`
                       : p.abat_hora_inicio ? `Iniciado a las ${hora(p.abat_hora_inicio)}${p.abat_temp_inicio != null ? ` con ${num(p.abat_temp_inicio)} °C` : ""}` : "Pendiente"}
-                    <div className="suave pequeno" style={{ fontWeight: 400 }}>Objetivo ≤ {p.abatimiento_temp_max} °C en {p.abatimiento_minutos_max} min {t.abat_ok === false && "· fuera de objetivo"}</div>
+                    <div className="suave pequeno" style={{ fontWeight: 400 }}>Objetivo ≤ {t.objetivo_temp} °C en {t.objetivo_minutos} min {t.abat_ok === false && "· fuera de objetivo"}</div>
                   </dd>
                   {p.medida_correctora && <><dt>Medida correctora</dt><dd style={{ fontWeight: 400 }}>{p.medida_correctora}</dd></>}
                 </dl>
                 {!p.abat_hora_fin && puede("registrar") && (
-                  <button className="boton principal bloque" onClick={() => setHoja("abatimiento")}><Snowflake size={20} aria-hidden /> Completar abatimiento</button>
+                  <button className="boton principal bloque" onClick={() => setHoja("abatimiento")}><Snowflake size={20} aria-hidden /> {t.congelado ? "Completar congelación" : "Completar abatimiento"}</button>
                 )}
               </section>
             )}
@@ -146,7 +148,7 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
         )}
       </main>
 
-      {hoja === "abatimiento" && <CompletarAbatimiento cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast("Abatimiento registrado"); cargar(); }} />}
+      {hoja === "abatimiento" && <CompletarAbatimiento cfg={cfg} p={p} onCerrar={() => setHoja(null)} onHecho={() => { setHoja(null); toast(t.congelado ? "Congelación registrada" : "Abatimiento registrado"); cargar(); }} />}
       {hoja === "borrar" && (
         <Hoja titulo="¿Eliminar este lote?" onCerrar={() => setHoja(null)}>
           <p>Se borrará el lote {p.num_lote} con sus ingredientes y controles. No se puede deshacer.</p>
@@ -159,6 +161,7 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
 }
 
 function CompletarAbatimiento({ cfg, p, onCerrar, onHecho }) {
+  const obj = { ...p, abatimiento_temp_max: p.control_termico?.objetivo_temp ?? p.abatimiento_temp_max, abatimiento_minutos_max: p.control_termico?.objetivo_minutos ?? p.abatimiento_minutos_max };
   const fechaBase = (p.abat_hora_inicio || `${p.fecha}T12:00:00`).slice(0, 10);
   const [v, setV] = useState({
     coccion_temp: txt(p.coccion_temp), abat_temp_inicio: txt(p.abat_temp_inicio),
@@ -169,7 +172,7 @@ function CompletarAbatimiento({ cfg, p, onCerrar, onHecho }) {
     const fin = aNumero(v.abat_temp_fin);
     if (fin == null || Number.isNaN(fin)) return setError("Anota la temperatura de salida.");
     if (!v.abat_hora_inicio) return setError("Falta la hora de entrada al abatidor.");
-    if (evaluar(p, v, fechaBase).fuera && !v.medida_correctora.trim()) return setError("Fuera del objetivo: anota la medida correctora.");
+    if (evaluar(obj, v, fechaBase, false).fuera && !v.medida_correctora.trim()) return setError("Fuera del objetivo: anota la medida correctora.");
     const ini = aISO(fechaBase, v.abat_hora_inicio);
     let finIso = aISO(fechaBase, v.abat_hora_fin);
     if (new Date(finIso) < new Date(ini)) finIso = new Date(new Date(finIso).getTime() + 86400000).toISOString();
@@ -182,8 +185,8 @@ function CompletarAbatimiento({ cfg, p, onCerrar, onHecho }) {
     } catch (e) { setError(e.message); }
   }
   return (
-    <Hoja titulo="Completar abatimiento" onCerrar={onCerrar}>
-      <ControlTermico obj={p} v={v} fecha={fechaBase} soloAbatimiento cambiar={(x) => setV((y) => ({ ...y, ...x }))} />
+    <Hoja titulo={p.control_termico?.congelado ? "Completar congelación" : "Completar abatimiento"} onCerrar={onCerrar}>
+      <ControlTermico obj={obj} v={v} fecha={fechaBase} soloAbatimiento congelado={p.control_termico?.congelado} cambiar={(x) => setV((y) => ({ ...y, ...x }))} />
       {error && <Aviso tipo="error">{error}</Aviso>}
       <button className="boton principal grande bloque" onClick={guardar}>Guardar abatimiento</button>
     </Hoja>

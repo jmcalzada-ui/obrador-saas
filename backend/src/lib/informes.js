@@ -151,22 +151,22 @@ async function produccion(c, f) {
     { titulo: "Fecha", ancho: 1.25 }, { titulo: "Producto", ancho: 2.2 },
     ...(soloUnTipo ? [] : [{ titulo: "Interna", ancho: 0.75, alinear: "center" }]),
     { titulo: "Lote", ancho: 1.4 }, { titulo: "Cantidad", ancho: 0.9, alinear: "right" }, { titulo: "Ud.", ancho: 0.5, alinear: "center" },
-    { titulo: "Uds.", ancho: 0.7, alinear: "right" },
+    { titulo: "Unidades", ancho: 1, alinear: "right" },
     ...(config.controlStock ? [{ titulo: "Disponible", ancho: 1.15, alinear: "right" }] : []),
     { titulo: "Caducidad", ancho: 1.25 }, { titulo: "Ingredientes (producto · lote · cantidad)", ancho: 4.2 },
-    { titulo: "Cocción", ancho: 1.1 }, { titulo: "Abatimiento", ancho: 1.7 }, { titulo: "Control térmico", ancho: 1.1 },
+    { titulo: "Cocción", ancho: 1.1 }, { titulo: "Abatimiento / congelación", ancho: 1.7 }, { titulo: "Control térmico", ancho: 1.1 },
     { titulo: "Medida correctora", ancho: 1.6 }, { titulo: "Responsable", ancho: 1.2 },
   ];
   const filas = rows.map((r) => {
     const t = evaluarTermico(r);
-    const abat = r.proceso_termico
+    const abat = t.estado !== "no_aplica"
       ? r.abat_hora_fin
         ? `de ${num(r.abat_temp_inicio, 1)} a ${num(r.abat_temp_fin, 1)} °C\n${hora(r.abat_hora_inicio)}–${hora(r.abat_hora_fin)} (${t.abat_minutos} min)`
         : r.abat_hora_inicio ? `Iniciado ${hora(r.abat_hora_inicio)}` : "Pendiente"
       : "";
     return [
       fecha(r.fecha), r.producto, ...(soloUnTipo ? [] : [r.interna ? "Sí" : "No"]), r.num_lote, num(r.cantidad), r.unidad,
-      r.unidades ?? "", ...(config.controlStock ? [r.interna ? num(r.disponible) : ""] : []),
+      r.unidades != null ? `${num(r.unidades)} ${r.unidades_tipo || ""}`.trim() : "", ...(config.controlStock ? [r.interna ? num(r.disponible) : ""] : []),
       fecha(r.caducidad), (ingredientes.get(r.id) || []).join("\n"),
       r.proceso_termico && r.coccion_temp != null ? `${num(r.coccion_temp, 1)} °C · ${r.coccion_minutos ?? "–"} min` : "",
       abat, ESTADO_PCC[t.estado], r.medida_correctora || "", r.responsable || "",

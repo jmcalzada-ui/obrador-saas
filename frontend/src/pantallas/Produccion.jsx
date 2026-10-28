@@ -29,10 +29,10 @@ const COLUMNAS = [
   { titulo: "Interna", celda: (p) => <Interna p={p} />, orden: (p) => p.interna, ancho: 90 },
   { titulo: "Lote", celda: (p) => <span className="lote-tabla">{p.num_lote}</span>, orden: (p) => p.num_lote },
   { titulo: "Cantidad", num: true, celda: (p) => `${num(p.cantidad)} ${p.unidad}`, orden: (p) => p.cantidad },
-  { titulo: "Uds.", num: true, celda: (p) => (p.unidades != null ? num(p.unidades) : "—"), orden: (p) => p.unidades ?? -1 },
+  { titulo: "Unidades", num: true, celda: (p) => (p.unidades != null ? `${num(p.unidades)} ${p.unidades_tipo || ""}`.trim() : "—"), orden: (p) => p.unidades ?? -1 },
   { titulo: "Caducidad", celda: (p) => <span className="fila" style={{ gap: 6 }}>{fecha(p.caducidad)} <Caducidad p={p} /></span>, orden: (p) => p.caducidad || "" },
   { titulo: "Responsable", ajustar: true, celda: (p) => p.responsable || "—", orden: (p) => p.responsable || "" },
-  { titulo: "Control térmico", celda: (p) => (p.proceso_termico ? <EstadoTermico control={p.control_termico} /> : <span className="suave">No aplica</span>), orden: (p) => p.control_termico?.estado || "" },
+  { titulo: "Control térmico", celda: (p) => (p.control_termico?.estado !== "no_aplica" ? <EstadoTermico control={p.control_termico} /> : <span className="suave">No aplica</span>), orden: (p) => p.control_termico?.estado || "" },
 ];
 
 /** Producción: lotes elaborados, internos (se usan como ingrediente) y finales (se venden). */
@@ -87,7 +87,7 @@ export default function Produccion() {
                   <button className="item" onClick={() => (window.location.hash = `/productos/${p.id}`)}>
                     <span className="principal">
                       <strong>{p.nombre}</strong>
-                      <span className="suave pequeno">{p.proceso_termico ? "Con proceso térmico" : "Sin proceso térmico"}{p.vida_util_dias ? ` · vida útil ${p.vida_util_dias} días` : ""}</span>
+                      <span className="suave pequeno">{[p.proceso_termico ? "Con proceso térmico" : "Sin proceso térmico", p.conservacion === "congelado" && "congelado"].filter(Boolean).join(" · ")}{p.vida_util_dias ? ` · vida útil ${p.vida_util_dias} días` : ""}</span>
                     </span>
                     <Interna p={{ interna: p.tipo === "preparado" }} />
                     <span className="distintivo">{p.unidad_medida}</span>
@@ -121,7 +121,7 @@ export default function Produccion() {
                 </div>
                 <div className="cantidad">
                   <strong>{num(p.cantidad)}</strong> <span className="suave">{p.unidad}</span>
-                  {p.unidades != null && <div className="pequeno suave">{num(p.unidades)} uds.</div>}
+                  {p.unidades != null && <div className="pequeno suave">{num(p.unidades)} {p.unidades_tipo || "uds."}</div>}
                 </div>
                 <div className="meta">
                   <Interna p={p} />

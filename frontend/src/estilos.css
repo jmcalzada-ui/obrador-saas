@@ -552,3 +552,7 @@ table.tabla th, table.tabla td { padding: 8px 10px; }
   .filtros .exportar .boton { min-height: 38px; }
   .filtros { padding: 12px 14px; }
 }
+
+/* Unidades obtenidas: número + tipo (cajas, bandejas…) */
+.unidades-tipo { display: grid; grid-template-columns: 7em 1fr; gap: 8px; }
+.alta-rapida { background: var(--azul-claro); border-color: #bcd0ea; }

@@ -2,13 +2,16 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, Plus, Trash2, Flame, Snowflake, CornerDownRight } from "lucide-react";
 import { api } from "../api.js";
 import { Aviso, Campo, Cargando, Opciones, useSesion, useToast, hoyISO, aNumero, num, fecha } from "../componentes/ui.jsx";
-import Autocompletar from "../componentes/Autocompletar.jsx";
+import Autocompletar, { normal } from "../componentes/Autocompletar.jsx";
 import ControlTermico, { aISO, horaAhora, evaluar } from "../componentes/ControlTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import { ELABORACION } from "../componentes/elaboracion.js";
 import { CONTROL_STOCK } from "../componentes/fase.js";
 
 const OBJETIVOS = { coccion_temp_min: 75, abatimiento_temp_max: 10, abatimiento_minutos_max: 120 };
+const OBJETIVOS_CONGELACION = { abatimiento_temp_max: -18, abatimiento_minutos_max: 240 };
+// Tipos de unidad habituales (también se puede escribir otro).
+export const TIPOS_UNIDAD = ["unidades", "cajas", "bandejas", "bolsas", "raciones", "kilos", "barquetas", "piezas", "docenas"];
 let siguienteId = 1;
 const filaVacia = (producto = null) => ({ k: siguienteId++, producto, lote: null, manual: false, num_lote: "", cantidad: "", texto: producto?.nombre || "" });
 
@@ -39,7 +42,7 @@ export default function NuevaProduccion({ id, tipo }) {
   const [elegido, setElegido] = useState(null); // preparado guardado
   const [nuevo, setNuevo] = useState(null); // { nombre, unidad_medida, proceso_termico, vida_util_dias, conservacion }
   const [filas, setFilas] = useState([filaVacia()]);
-  const [lote, setLote] = useState({ num_lote: "", cantidad: "", unidades: "", fecha: hoyISO(), caducidad: "", responsable: usuario.nombre, observaciones: "" });
+  const [lote, setLote] = useState({ num_lote: "", cantidad: "", unidades: "", unidades_tipo: "", fecha: hoyISO(), caducidad: "", responsable: usuario.nombre, observaciones: "" });
   const [termico, setTermico] = useState({ coccion_temp: "", coccion_minutos: "", abat_temp_inicio: "", abat_hora_inicio: horaAhora(), abat_temp_fin: "", abat_hora_fin: "", medida_correctora: "" });
 
   useEffect(() => {
@@ -64,7 +67,7 @@ export default function NuevaProduccion({ id, tipo }) {
             cantidad: txt(i.cantidad),
           })));
           setLote({
-            num_lote: lote0.num_lote, cantidad: txt(lote0.cantidad), unidades: txt(lote0.unidades), fecha: lote0.fecha,
+            num_lote: lote0.num_lote, cantidad: txt(lote0.cantidad), unidades: txt(lote0.unidades), unidades_tipo: lote0.unidades_tipo || "", fecha: lote0.fecha,
             caducidad: lote0.caducidad || "", responsable: lote0.responsable || "", observaciones: lote0.observaciones || "",
           });
           setTermico({
@@ -78,8 +81,14 @@ export default function NuevaProduccion({ id, tipo }) {
   }, []);
 
   const datos = elegido || nuevo; // lo que define el preparado
-  const conTermico = Boolean(datos?.proceso_termico);
-  const obj = elegido?.proceso_termico ? elegido : OBJETIVOS;
+  // Control de temperaturas: cocción y abatimiento (proceso térmico) y/o congelación (se conserva congelado).
+  const congelado = datos?.conservacion === "congelado";
+  const conTermico = Boolean(datos?.proceso_termico) || congelado;
+  const obj = {
+    ...OBJETIVOS,
+    ...(congelado ? OBJETIVOS_CONGELACION : {}),
+    ...(elegido ? Object.fromEntries(["coccion_temp_min", "abatimiento_temp_max", "abatimiento_minutos_max"].filter((k) => elegido[k] != null).map((k) => [k, Number(elegido[k])])) : {}),
+  };
   const unidad = datos?.unidad_medida;
   const pasos = ["preparado", "ingredientes", "lote", ...(conTermico ? ["termico"] : []), "revisar"];
   const indice = pasos.indexOf(paso === "nuevo" ? "preparado" : paso);
@@ -123,6 +132,8 @@ export default function NuevaProduccion({ id, tipo }) {
       if (nuevo.proceso_termico === null) return "Indica si lleva proceso térmico.";
     }
     if (paso === "ingredientes") {
+      const sinElegir = filas.find((f) => !f.producto && f.texto.trim());
+      if (sinElegir) return `«${sinElegir.texto.trim()}» no está en tus productos: elígelo de la lista o pulsa «Añadir…» para darlo de alta.`;
       const validas = filas.filter((f) => f.producto);
       if (!validas.length) return "Añade al menos un ingrediente.";
       for (const f of validas) {
@@ -135,13 +146,13 @@ export default function NuevaProduccion({ id, tipo }) {
     if (paso === "lote") {
       if (!lote.num_lote.trim()) return "Indica el nº de lote.";
       if (!(aNumero(lote.cantidad) > 0)) return "Indica la cantidad obtenida.";
-      if (cfg.conUnidades && lote.unidades.trim() && !Number.isInteger(aNumero(lote.unidades))) return "Las unidades deben ser un número entero.";
+      if (lote.unidades.trim() && !Number.isInteger(aNumero(lote.unidades))) return "Las unidades deben ser un número entero.";
     }
     if (paso === "termico") {
-      if (aNumero(termico.coccion_temp) == null) return "Anota la temperatura de cocción.";
+      if (datos?.proceso_termico && aNumero(termico.coccion_temp) == null) return "Anota la temperatura de cocción.";
       for (const k of ["coccion_temp", "coccion_minutos", "abat_temp_inicio", "abat_temp_fin"]) if (Number.isNaN(aNumero(termico[k]))) return "Revisa los valores: alguno no es un número.";
       if (termico.abat_temp_fin && !termico.abat_hora_fin) return "Indica la hora de salida del abatimiento, o deja vacía la temperatura de salida.";
-      if (evaluar(obj, termico, lote.fecha).fuera && !termico.medida_correctora.trim()) return "Un control está fuera del objetivo: anota la medida correctora.";
+      if (evaluar(obj, termico, lote.fecha, Boolean(datos?.proceso_termico)).fuera && !termico.medida_correctora.trim()) return "Un control está fuera del objetivo: anota la medida correctora.";
     }
     return "";
   }
@@ -160,7 +171,7 @@ export default function NuevaProduccion({ id, tipo }) {
     setGuardando(true);
     setError("");
     const t = conTermico ? {
-      coccion_temp: aNumero(termico.coccion_temp), coccion_minutos: aNumero(termico.coccion_minutos),
+      ...(datos?.proceso_termico ? { coccion_temp: aNumero(termico.coccion_temp), coccion_minutos: aNumero(termico.coccion_minutos) } : {}),
       abat_temp_inicio: aNumero(termico.abat_temp_inicio), abat_hora_inicio: termico.abat_temp_inicio || termico.abat_hora_fin ? aISO(lote.fecha, termico.abat_hora_inicio) : null,
       abat_temp_fin: aNumero(termico.abat_temp_fin), abat_hora_fin: termico.abat_hora_fin ? finISO(lote.fecha, termico.abat_hora_inicio, termico.abat_hora_fin) : null,
       medida_correctora: termico.medida_correctora.trim(),
@@ -173,7 +184,7 @@ export default function NuevaProduccion({ id, tipo }) {
         ...(elegido ? { producto_id: elegido.id } : { nuevo: { ...nuevo, nombre: nuevo.nombre.trim(), vida_util_dias: aNumero(nuevo.vida_util_dias) } }),
         fecha: lote.fecha, num_lote: lote.num_lote.trim(), cantidad: aNumero(lote.cantidad), caducidad: lote.caducidad || null,
         responsable: lote.responsable.trim(), observaciones: lote.observaciones.trim(),
-        ...(cfg.conUnidades ? { unidades: lote.unidades.trim() ? aNumero(lote.unidades) : null } : {}),
+        unidades: lote.unidades.trim() ? aNumero(lote.unidades) : null, unidades_tipo: lote.unidades_tipo.trim(),
         ingredientes: filas.filter((f) => f.producto).map((f) => f.manual
           ? { origen: "manual", producto_id: f.producto.id, num_lote: f.num_lote.trim(), cantidad: aNumero(f.cantidad) }
           : { origen: f.lote.origen, lote_id: f.lote.id, cantidad: aNumero(f.cantidad) }),
@@ -218,11 +229,11 @@ export default function NuevaProduccion({ id, tipo }) {
         )}
         {paso === "nuevo" && <PasoNuevo nuevo={nuevo} setNuevo={setNuevo} interna={interna} setInterna={setInterna} />}
         {paso === "ingredientes" && (
-          <PasoIngredientes filas={filas} setFilas={setFilas} catalogo={catalogo.filter((c) => c.id !== elegido?.id && c.tipo !== "elaborado")} lotes={lotes} conLotePorDefecto={conLotePorDefecto} />
+          <PasoIngredientes filas={filas} setFilas={setFilas} catalogo={catalogo.filter((c) => c.id !== elegido?.id && c.tipo !== "elaborado")} setCatalogo={setCatalogo} lotes={lotes} conLotePorDefecto={conLotePorDefecto} />
         )}
         {paso === "lote" && <PasoLote cfg={cfg} lote={lote} setLote={setLote} unidad={unidad} />}
         {paso === "termico" && (
-          <ControlTermico obj={obj} v={termico} fecha={lote.fecha} cambiar={(p) => setTermico((x) => ({ ...x, ...p }))} />
+          <ControlTermico obj={obj} v={termico} fecha={lote.fecha} coccion={Boolean(datos?.proceso_termico)} congelado={congelado} cambiar={(p) => setTermico((x) => ({ ...x, ...p }))} />
         )}
         {paso === "revisar" && <PasoRevisar cfg={cfg} interna={interna} datos={datos} filas={filas} lote={lote} unidad={unidad} termico={conTermico ? termico : null} obj={obj} irA={irA} />}
 
@@ -307,6 +318,9 @@ function PasoNuevo({ nuevo, setNuevo, interna, setInterna }) {
       <Opciones etiqueta="Unidad del lote obtenido" valor={nuevo.unidad_medida} onCambio={(v) => c({ unidad_medida: v })} opciones={["kg", "g", "l", "ml", "ud"].map((u) => ({ valor: u, texto: u }))} />
       <Opciones etiqueta="Conservación" valor={nuevo.conservacion} onCambio={(v) => c({ conservacion: v })}
         opciones={[{ valor: "ambiente", texto: "Ambiente" }, { valor: "refrigerado", texto: "Refrigerado" }, { valor: "congelado", texto: "Congelado" }]} />
+      {nuevo.conservacion === "congelado" && (
+        <p className="suave pequeno">Cada lote pedirá el control de congelación: temperatura y hora al meterlo a congelar y al llegar a −18 °C (objetivo ajustable en la ficha del producto).</p>
+      )}
       <Campo etiqueta="Vida útil (días)" id="pn-vida" ayuda="Opcional. Sirve para proponer la caducidad de cada lote.">
         <input id="pn-vida" className="entrada" inputMode="numeric" value={nuevo.vida_util_dias} onChange={(e) => c({ vida_util_dias: e.target.value })} />
       </Campo>
@@ -314,7 +328,20 @@ function PasoNuevo({ nuevo, setNuevo, interna, setInterna }) {
   );
 }
 
-function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto }) {
+function PasoIngredientes({ filas, setFilas, catalogo, setCatalogo, lotes, conLotePorDefecto }) {
+  const [creando, setCreando] = useState(null); // { k, nombre, unidad }
+  const [errorAlta, setErrorAlta] = useState("");
+  // Si lo escrito coincide con un producto, se toma ese producto aunque no se pulse la sugerencia.
+  const buscarExacto = (t) => catalogo.find((p) => normal(p.nombre) === normal(t));
+  async function crearIngrediente() {
+    setErrorAlta("");
+    try {
+      const { producto } = await api.post("/catalogo/productos", { nombre: creando.nombre.trim(), unidad_medida: creando.unidad, tipo: "materia_prima" });
+      setCatalogo((l) => [...l, producto]);
+      setFilas((l) => l.map((f) => (f.k === creando.k ? conLotePorDefecto({ ...f, producto, texto: producto.nombre }) : f)));
+      setCreando(null);
+    } catch (e) { setErrorAlta(e.message); }
+  }
   const cambiarFila = (k, p) => setFilas((l) => l.map((f) => (f.k === k ? { ...f, ...p } : f)));
   const opciones = useMemo(() => catalogo.map((p) => ({ id: p.id, texto: p.nombre, detalle: p.tipo === "preparado" ? `Producción interna · ${p.unidad_medida}` : p.unidad_medida, p })), [catalogo]);
 
@@ -333,11 +360,29 @@ function PasoIngredientes({ filas, setFilas, catalogo, lotes, conLotePorDefecto 
             </div>
             <Autocompletar
               valor={f.texto}
-              onTexto={(t) => cambiarFila(f.k, { texto: t, ...(f.producto && t !== f.producto.nombre ? { producto: null, lote: null } : {}) })}
+              onTexto={(t) => {
+                const exacto = !f.producto || t !== f.producto.nombre ? buscarExacto(t) : null;
+                if (exacto) cambiarFila(f.k, conLotePorDefecto({ ...f, producto: exacto, texto: t }));
+                else cambiarFila(f.k, { texto: t, ...(f.producto && t !== f.producto.nombre ? { producto: null, lote: null } : {}) });
+              }}
               opciones={opciones}
               onElegir={(o) => cambiarFila(f.k, conLotePorDefecto({ ...f, producto: o.p, texto: o.texto }))}
+              onCrear={(nombre) => setCreando({ k: f.k, nombre, unidad: "kg" })}
+              textoCrear={(t) => `Añadir «${t}» como ingrediente nuevo`}
               placeholder="Escribe el ingrediente"
             />
+            {creando?.k === f.k && (
+              <div className="panel pila alta-rapida">
+                <strong>Nuevo ingrediente: {creando.nombre}</strong>
+                <Opciones etiqueta="Unidad de medida" valor={creando.unidad} onCambio={(v) => setCreando({ ...creando, unidad: v })}
+                  opciones={["kg", "g", "l", "ml", "ud"].map((u) => ({ valor: u, texto: u }))} />
+                {errorAlta && <Aviso tipo="error">{errorAlta}</Aviso>}
+                <div className="fila">
+                  <button type="button" className="boton" onClick={() => setCreando(null)}>Cancelar</button>
+                  <button type="button" className="boton principal" style={{ flex: 1 }} onClick={crearIngrediente}>Añadir a Productos</button>
+                </div>
+              </div>
+            )}
             {f.producto && !CONTROL_STOCK && (
               <>
                 <LoteSugerido fila={f} lotes={delProducto} cambiar={(p) => cambiarFila(f.k, p)} />
@@ -427,11 +472,15 @@ function PasoLote({ cfg, lote, setLote, unidad }) {
       <Campo etiqueta={`Cantidad obtenida (${unidad})`} id="pl-cant">
         <input id="pl-cant" className="entrada grande" inputMode="decimal" value={lote.cantidad} onChange={(e) => c({ cantidad: e.target.value })} />
       </Campo>
-      {cfg.conUnidades && unidad !== "ud" && (
-        <Campo etiqueta="Unidades o raciones (opcional)" id="pl-uds" ayuda="Piezas, bandejas o raciones que salen del lote.">
-          <input id="pl-uds" className="entrada" inputMode="numeric" value={lote.unidades} onChange={(e) => c({ unidades: e.target.value })} />
-        </Campo>
-      )}
+      <div className="campo">
+        <span className="etq">Unidades obtenidas (opcional)</span>
+        <div className="unidades-tipo">
+          <input className="entrada" inputMode="numeric" aria-label="Número de unidades" placeholder="Nº" value={lote.unidades} onChange={(e) => c({ unidades: e.target.value })} />
+          <input className="entrada" list="tipos-unidad" aria-label="Tipo de unidad" placeholder="cajas, bandejas, unidades…" value={lote.unidades_tipo} onChange={(e) => c({ unidades_tipo: e.target.value })} />
+          <datalist id="tipos-unidad">{TIPOS_UNIDAD.map((t) => <option key={t} value={t} />)}</datalist>
+        </div>
+        <span className="ayuda">Elige de la lista o escribe otro (p. ej. «cajas de 2 kg»).</span>
+      </div>
       <div className="dos-columnas">
         <Campo etiqueta="Fecha" id="pl-fecha">
           <input id="pl-fecha" className="entrada" type="date" max={hoyISO()} value={lote.fecha} onChange={(e) => c({ fecha: e.target.value })} />
@@ -451,14 +500,14 @@ function PasoLote({ cfg, lote, setLote, unidad }) {
 }
 
 function PasoRevisar({ cfg, interna, datos, filas, lote, unidad, termico, obj, irA }) {
-  const r = termico ? evaluar(obj, termico, lote.fecha) : null;
+  const r = termico ? evaluar(obj, termico, lote.fecha, Boolean(datos.proceso_termico)) : null;
   return (
     <div className="pila">
       <dl className="ficha panel">
         <dt>Producto</dt><dd>{datos.nombre}</dd>
         <dt>Tipo</dt><dd>{interna ? "Producción interna" : "Producción final"}</dd>
         <dt>Lote</dt><dd>{lote.num_lote}</dd>
-        <dt>Obtenido</dt><dd>{num(aNumero(lote.cantidad))} {unidad}{cfg.conUnidades && lote.unidades ? ` · ${lote.unidades} uds.` : ""}</dd>
+        <dt>Obtenido</dt><dd>{num(aNumero(lote.cantidad))} {unidad}{lote.unidades ? ` · ${lote.unidades} ${lote.unidades_tipo || "uds."}` : ""}</dd>
         <dt>Fecha</dt><dd>{fecha(lote.fecha)}</dd>
         <dt>Caducidad</dt><dd>{fecha(lote.caducidad)}</dd>
         <dt>Responsable</dt><dd>{lote.responsable || "—"}</dd>
@@ -479,8 +528,8 @@ function PasoRevisar({ cfg, interna, datos, filas, lote, unidad, termico, obj, i
       {termico && (
         <section className="panel pila">
           <div className="fila entre"><h3>Control térmico</h3><button className="boton" onClick={() => irA("termico")}>Cambiar</button></div>
-          <p>Cocción: {termico.coccion_temp || "—"} °C · {termico.coccion_minutos || "—"} min {r.coccionOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>
-          <p>Abatimiento: {termico.abat_hora_fin ? `${termico.abat_temp_inicio || "—"} → ${termico.abat_temp_fin} °C en ${r.minutos} min` : "pendiente de completar"} {r.abatOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>
+          {datos.proceso_termico && <p>Cocción: {termico.coccion_temp || "—"} °C · {termico.coccion_minutos || "—"} min {r.coccionOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>}
+          <p>{datos.conservacion === "congelado" ? "Congelación" : "Abatimiento"}: {termico.abat_hora_fin ? `${termico.abat_temp_inicio || "—"} → ${termico.abat_temp_fin} °C en ${r.minutos} min` : "pendiente de completar"} {r.abatOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>
           {termico.medida_correctora && <p className="suave">Medida correctora: {termico.medida_correctora}</p>}
         </section>
       )}

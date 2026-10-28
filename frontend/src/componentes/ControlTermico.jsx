@@ -15,9 +15,9 @@ export const horaAhora = () => new Date().toTimeString().slice(0, 5);
  * El abatimiento puede terminar otro día: hora fin anterior a la de inicio
  * se entiende como del día siguiente.
  */
-export function evaluar(obj, v, fecha) {
+export function evaluar(obj, v, fecha, conCoccion = true) {
   const coccion = aNumero(v.coccion_temp);
-  const coccionOk = coccion == null || Number.isNaN(coccion) ? null : coccion >= obj.coccion_temp_min;
+  const coccionOk = !conCoccion || coccion == null || Number.isNaN(coccion) ? null : coccion >= obj.coccion_temp_min;
   let minutos = null;
   let abatOk = null;
   const fin = aNumero(v.abat_temp_fin);
@@ -38,12 +38,16 @@ function Resultado({ ok, textoOk, textoMal }) {
     : <span className="resultado-pcc mal"><XCircle size={18} aria-hidden /> {textoMal}</span>;
 }
 
-/** Campos de cocción y abatimiento con sus objetivos y el resultado al momento. */
-export default function ControlTermico({ obj, v, cambiar, fecha, soloAbatimiento = false }) {
-  const r = evaluar(obj, v, fecha);
+/**
+ * Campos de cocción y abatimiento (o congelación, si el producto se conserva
+ * congelado) con sus objetivos y el resultado al momento.
+ */
+export default function ControlTermico({ obj, v, cambiar, fecha, soloAbatimiento = false, coccion = true, congelado = false }) {
+  const r = evaluar(obj, v, fecha, coccion && !soloAbatimiento);
+  const horas = (m) => (m >= 60 ? `${m} minutos (${Math.round((m / 60) * 10) / 10} h)`.replace(".", ",") : `${m} minutos`);
   return (
     <div className="pila">
-      {!soloAbatimiento && (
+      {!soloAbatimiento && coccion && (
         <section className="panel pila">
           <h3>Cocción</h3>
           <p className="objetivo">Objetivo: al menos {obj.coccion_temp_min} °C en el centro del producto.</p>
@@ -60,24 +64,30 @@ export default function ControlTermico({ obj, v, cambiar, fecha, soloAbatimiento
       )}
 
       <section className="panel pila">
-        <h3>Abatimiento</h3>
-        <p className="objetivo">Objetivo: bajar hasta {obj.abatimiento_temp_max} °C o menos en un máximo de {obj.abatimiento_minutos_max} minutos.</p>
+        <h3>{congelado ? "Abatimiento / congelación" : "Abatimiento"}</h3>
+        <p className="objetivo">
+          {congelado
+            ? `Objetivo: llegar a ${obj.abatimiento_temp_max} °C o menos en el centro del producto en un máximo de ${horas(obj.abatimiento_minutos_max)} desde que se mete a congelar.`
+            : `Objetivo: bajar hasta ${obj.abatimiento_temp_max} °C o menos en un máximo de ${horas(obj.abatimiento_minutos_max)}.`}
+        </p>
         <div className="dos-columnas">
-          <Campo etiqueta="Temp. al entrar (°C)" id="ct-ati">
+          <Campo etiqueta={congelado ? "Temp. al meterlo (°C)" : "Temp. al entrar (°C)"} id="ct-ati">
             <input id="ct-ati" className="entrada" inputMode="decimal" value={v.abat_temp_inicio} onChange={(e) => cambiar({ abat_temp_inicio: e.target.value })} />
           </Campo>
-          <Campo etiqueta="Hora de entrada" id="ct-hi">
+          <Campo etiqueta={congelado ? "Hora en que se mete" : "Hora de entrada"} id="ct-hi">
             <input id="ct-hi" className="entrada" type="time" value={v.abat_hora_inicio} onChange={(e) => cambiar({ abat_hora_inicio: e.target.value })} />
           </Campo>
-          <Campo etiqueta="Temp. al salir (°C)" id="ct-atf">
+          <Campo etiqueta={congelado ? "Temp. alcanzada (°C)" : "Temp. al salir (°C)"} id="ct-atf">
             <input id="ct-atf" className="entrada" inputMode="decimal" value={v.abat_temp_fin} onChange={(e) => cambiar({ abat_temp_fin: e.target.value })} />
           </Campo>
-          <Campo etiqueta="Hora de salida" id="ct-hf">
+          <Campo etiqueta={congelado ? "Hora en que llega" : "Hora de salida"} id="ct-hf">
             <input id="ct-hf" className="entrada" type="time" value={v.abat_hora_fin} onChange={(e) => cambiar({ abat_hora_fin: e.target.value })} />
           </Campo>
         </div>
-        {!soloAbatimiento && !v.abat_hora_fin && <p className="suave pequeno">Si el abatimiento aún no ha terminado, deja la salida vacía y complétala después desde el lote.</p>}
-        <Resultado ok={r.abatOk} textoOk={`Abatimiento correcto (${r.minutos} min)`} textoMal={`Fuera de objetivo (${r.minutos} min)`} />
+        {!soloAbatimiento && !v.abat_hora_fin && (
+          <p className="suave pequeno">{congelado ? "Si aún no ha llegado a la temperatura, deja vacía la hora de llegada y complétala después desde el lote." : "Si el abatimiento aún no ha terminado, deja la salida vacía y complétala después desde el lote."}</p>
+        )}
+        <Resultado ok={r.abatOk} textoOk={`${congelado ? "Congelación" : "Abatimiento"} correcto (${r.minutos} min)`} textoMal={`Fuera de objetivo (${r.minutos} min)`} />
       </section>
 
       {r.fuera && (

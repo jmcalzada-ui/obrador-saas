@@ -43,19 +43,18 @@ export default function ProductoDetalle({ id }) {
         {producto && (
           <>
             <dl className="ficha panel">
-              <dt>Unidad</dt><dd>{producto.unidad_medida} <span className="suave pequeno">(fija)</span></dd>
-              {!esPreparado && <><dt>Conservación</dt><dd>{CONSERVACION[producto.conservacion] || "—"}</dd></>}
+              <dt>Unidad</dt><dd>{producto.unidad_medida}</dd>
+              <dt>Conservación</dt><dd>{CONSERVACION[producto.conservacion] || "—"}</dd>
               {producto.categoria && <><dt>Categoría</dt><dd>{producto.categoria}</dd></>}
               {producto.proveedores?.length > 0 && <><dt>Proveedores</dt><dd>{producto.proveedores.map((x) => x.nombre).join(", ")}</dd></>}
               {producto.ultimo_precio != null && <><dt>Último precio</dt><dd>{euros(producto.ultimo_precio)} / {producto.unidad_medida}</dd></>}
               {esPreparado && (
                 <>
                   <dt>Proceso térmico</dt><dd>{producto.proceso_termico ? "Sí" : "No"}</dd>
-                  {producto.proceso_termico && (
-                    <>
-                      <dt>Cocción</dt><dd>≥ {producto.coccion_temp_min} °C en el centro</dd>
-                      <dt>Abatimiento</dt><dd>hasta ≤ {producto.abatimiento_temp_max} °C en {producto.abatimiento_minutos_max} min como máximo</dd>
-                    </>
+                  {producto.proceso_termico && <><dt>Cocción</dt><dd>≥ {producto.coccion_temp_min} °C en el centro</dd></>}
+                  {(producto.proceso_termico || producto.conservacion === "congelado") && (
+                    <><dt>{producto.conservacion === "congelado" ? "Congelación" : "Abatimiento"}</dt>
+                      <dd>hasta ≤ {producto.abatimiento_temp_max ?? (producto.conservacion === "congelado" ? -18 : 10)} °C en {producto.abatimiento_minutos_max ?? (producto.conservacion === "congelado" ? 240 : 120)} min como máximo</dd></>
                   )}
                   <dt>Vida útil</dt><dd>{producto.vida_util_dias ? `${producto.vida_util_dias} días` : "—"}</dd>
                 </>
@@ -211,13 +210,12 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
   const [guardando, setGuardando] = useState(false);
 
   async function guardar(confirmar = false) {
-    const cuerpo = { nombre: f.nombre.trim(), unidad_medida: f.unidad_medida, categoria: f.categoria.trim() || null, activo: f.activo };
-    if (!preparado) cuerpo.conservacion = f.conservacion;
+    const cuerpo = { nombre: f.nombre.trim(), unidad_medida: f.unidad_medida, categoria: f.categoria.trim() || null, activo: f.activo, conservacion: f.conservacion };
     if (preparado) {
       cuerpo.proceso_termico = f.proceso_termico;
       cuerpo.vida_util_dias = aNumero(f.vida_util_dias);
-      if (f.proceso_termico) {
-        cuerpo.coccion_temp_min = aNumero(f.coccion_temp_min);
+      if (f.proceso_termico) cuerpo.coccion_temp_min = aNumero(f.coccion_temp_min);
+      if (f.proceso_termico || f.conservacion === "congelado") {
         cuerpo.abatimiento_temp_max = aNumero(f.abatimiento_temp_max);
         cuerpo.abatimiento_minutos_max = aNumero(f.abatimiento_minutos_max);
       }
@@ -236,6 +234,13 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
       if (e.datos?.codigo === "unidad_sin_conversion") setConfirmarUnidad(e.message);
       else setError(e.message);
     } finally { setGuardando(false); }
+  }
+  // Al pasar a congelado (o dejar de serlo) se proponen los objetivos de enfriado que tocan.
+  function cambiarConservacion(v) {
+    const x = { ...f, conservacion: v };
+    if (preparado && v === "congelado" && aNumero(f.abatimiento_temp_max) > -10) Object.assign(x, { abatimiento_temp_max: "-18", abatimiento_minutos_max: "240" });
+    if (preparado && v !== "congelado" && aNumero(f.abatimiento_temp_max) < 0) Object.assign(x, { abatimiento_temp_max: "10", abatimiento_minutos_max: "120" });
+    setF(x);
   }
   async function borrar() {
     try { await api.delete(`/catalogo/productos/${p.id}`); onBorrado(); }
@@ -257,27 +262,28 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
           </div>
         </Aviso>
       )}
-      {!preparado && (
-        <Opciones etiqueta="Conservación" valor={f.conservacion} onCambio={(v) => setF({ ...f, conservacion: v })}
-          opciones={Object.entries(CONSERVACION).map(([valor, texto]) => ({ valor, texto }))} />
-      )}
+      <Opciones etiqueta="Conservación" valor={f.conservacion} onCambio={cambiarConservacion}
+        opciones={Object.entries(CONSERVACION).map(([valor, texto]) => ({ valor, texto }))} />
       {preparado && (
         <>
-          <Opciones etiqueta="¿Lleva proceso térmico?" valor={f.proceso_termico} onCambio={(v) => setF({ ...f, proceso_termico: v })}
+          <Opciones etiqueta="¿Lleva proceso térmico (cocción)?" valor={f.proceso_termico} onCambio={(v) => setF({ ...f, proceso_termico: v })}
             opciones={[{ valor: true, texto: "Sí" }, { valor: false, texto: "No" }]} />
-          {f.proceso_termico && (
+          {(f.proceso_termico || f.conservacion === "congelado") && (
             <div className="panel pila">
-              <Campo etiqueta="Cocción: temperatura mínima en el centro (°C)" id="p-coc">
-                <input id="p-coc" className="entrada" inputMode="decimal" value={f.coccion_temp_min} onChange={(e) => setF({ ...f, coccion_temp_min: e.target.value })} />
-              </Campo>
+              {f.proceso_termico && (
+                <Campo etiqueta="Cocción: temperatura mínima en el centro (°C)" id="p-coc">
+                  <input id="p-coc" className="entrada" inputMode="decimal" value={f.coccion_temp_min} onChange={(e) => setF({ ...f, coccion_temp_min: e.target.value })} />
+                </Campo>
+              )}
               <div className="dos-columnas">
-                <Campo etiqueta="Abatir hasta (°C)" id="p-abt">
+                <Campo etiqueta={f.conservacion === "congelado" ? "Congelar hasta (°C)" : "Abatir hasta (°C)"} id="p-abt">
                   <input id="p-abt" className="entrada" inputMode="decimal" value={f.abatimiento_temp_max} onChange={(e) => setF({ ...f, abatimiento_temp_max: e.target.value })} />
                 </Campo>
                 <Campo etiqueta="En como máximo (min)" id="p-abm">
                   <input id="p-abm" className="entrada" inputMode="numeric" value={f.abatimiento_minutos_max} onChange={(e) => setF({ ...f, abatimiento_minutos_max: e.target.value })} />
                 </Campo>
               </div>
+              {f.conservacion === "congelado" && <p className="suave pequeno">Al ser congelado, cada lote pide el control de congelación con este objetivo.</p>}
             </div>
           )}
           <Campo etiqueta="Vida útil (días)" id="p-vida" ayuda="Sirve para proponer la caducidad de cada lote.">

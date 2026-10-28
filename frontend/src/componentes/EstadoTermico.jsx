@@ -9,6 +9,7 @@ const TEXTO = {
 /** Distintivo con el estado de cocción y abatimiento de un lote. */
 export default function EstadoTermico({ control }) {
   if (!control || control.estado === "no_aplica") return null;
-  const [tono, texto] = TEXTO[control.estado];
+  const [tono, base] = TEXTO[control.estado];
+  const texto = control.estado === "pendiente" && control.congelado ? "Congelación pendiente" : base;
   return <span className={`distintivo ${tono}`}>{texto}</span>;
 }

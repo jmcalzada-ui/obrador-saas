@@ -15,7 +15,7 @@ export const ELABORACION = {
     titulo: "Producción interna",
     corto: "Interna",
     conStock: true,
-    conUnidades: false,
+    conUnidades: true,
   },
   final: {
     clave: "final",
