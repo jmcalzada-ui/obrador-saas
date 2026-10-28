@@ -2,6 +2,9 @@ import React, { Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import { Cargando } from "./componentes/ui.jsx";
+// Tipografías incluidas en la app (sin depender de Google Fonts).
+import "@fontsource-variable/instrument-sans/index.css";
+import "@fontsource-variable/source-serif-4/index.css";
 import "./estilos.css";
 
 // Tres puertas de entrada en la misma web:

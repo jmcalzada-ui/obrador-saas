@@ -46,8 +46,8 @@ test("la entrada de mercancía toma la unidad del producto y calcula el total de
   assert.equal(r.body.recepcion.bultos, 1);
   recHarina = r.body.recepcion;
   recLeche = (await O.api.post("/api/recepciones", { fecha: "2026-10-20", producto_id: leche.id, cantidad: 12, num_lote: "L-7", temp_entrada: 3.5 })).body.recepcion;
-  // La unidad no se puede cambiar una vez usada
-  assert.equal((await O.api.patch(`/api/catalogo/productos/${harina.id}`, { unidad_medida: "g" })).status, 409);
+  // Con registros, la unidad solo cambia sin preguntar si se puede convertir (kg ↔ g, l ↔ ml)
+  assert.equal((await O.api.patch(`/api/catalogo/productos/${harina.id}`, { unidad_medida: "ud" })).status, 409);
 });
 
 test("primer preparado: se crea con proceso térmico y exige cocción", async () => {

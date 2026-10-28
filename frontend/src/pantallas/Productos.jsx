@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Plus, ChevronRight, FileText } from "lucide-react";
+import { Plus, ChevronRight, FileText, Search, Pencil, Trash2 } from "lucide-react";
 import { api } from "../api.js";
-import { Aviso, Cargando, Hoja, Opciones, useSesion, euros, fecha } from "../componentes/ui.jsx";
+import { Aviso, Campo, Cargando, Hoja, Opciones, useSesion, useToast, euros, fecha } from "../componentes/ui.jsx";
 import { normal } from "../componentes/Autocompletar.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import Filtros, { filtrosVacios } from "../componentes/Filtros.jsx";
@@ -35,6 +35,22 @@ const COLUMNAS = [
 
 /** Productos: todos los ingredientes y materias primas que entran en el obrador. */
 export default function Productos() {
+  const [vista, setVista] = useState("productos");
+  return vista === "productos" ? <ListaProductos vista={vista} setVista={setVista} /> : <Proveedores vista={vista} setVista={setVista} />;
+}
+
+/** Productos | Proveedores */
+function Pestanas({ vista, setVista }) {
+  return (
+    <div className="opciones compactas" role="radiogroup" aria-label="Qué mostrar">
+      {[["productos", "Productos"], ["proveedores", "Proveedores"]].map(([v, t]) => (
+        <button key={v} type="button" role="radio" className="opcion" aria-checked={vista === v} onClick={() => setVista(v)}>{t}</button>
+      ))}
+    </div>
+  );
+}
+
+function ListaProductos({ vista, setVista }) {
   const { puede } = useSesion();
   const escritorio = useEscritorio();
   const [lista, setLista] = useState(null);
@@ -67,6 +83,7 @@ export default function Productos() {
     <>
       <Cabecera titulo="Productos" />
       <main className="contenido ancho">
+        <Pestanas vista={vista} setVista={setVista} />
         <Filtros f={f} setF={setF} placeholder="Producto (primeras letras) o marca" informe="productos" etiquetaFechas="Alta" />
         {error && <Aviso tipo="error">{error}</Aviso>}
         {!lista && !error && <Cargando />}
@@ -144,6 +161,106 @@ function AltaProducto({ onCerrar, onCreado }) {
       </div>
       {error && <Aviso tipo="error">{error}</Aviso>}
       <button className="boton principal grande bloque" onClick={crear} disabled={!f.nombre.trim()}>Añadir producto</button>
+    </Hoja>
+  );
+}
+
+/** Proveedores: corregir nombre, CIF y contacto, darlos de baja o eliminarlos. */
+function Proveedores({ vista, setVista }) {
+  const { puede } = useSesion();
+  const toast = useToast();
+  const escritorio = useEscritorio();
+  const [lista, setLista] = useState(null);
+  const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+  const [editando, setEditando] = useState(null); // proveedor o {} para uno nuevo
+  const [orden, setOrden] = useState(null);
+  const cargar = () => api.get("/catalogo/proveedores").then(({ proveedores }) => setLista(proveedores)).catch((e) => setError(e.message));
+  useEffect(() => { cargar(); }, []);
+
+  const filtrados = useMemo(() => {
+    if (!lista) return [];
+    const n = normal(q.trim());
+    if (!n) return lista;
+    return [...lista.filter((p) => normal(p.nombre).startsWith(n)), ...lista.filter((p) => !normal(p.nombre).startsWith(n) && normal(p.nombre).includes(n))];
+  }, [lista, q]);
+  const columnas = [
+    { titulo: "Proveedor", ajustar: true, celda: (p) => <strong>{p.nombre}</strong>, orden: (p) => p.nombre },
+    { titulo: "CIF / NIF", celda: (p) => p.cif || "—", orden: (p) => p.cif || "" },
+    { titulo: "Contacto", ajustar: true, celda: (p) => p.contacto || "—", orden: (p) => p.contacto || "" },
+    { titulo: "Estado", celda: (p) => (p.activo ? <span className="distintivo verde">Activo</span> : <span className="distintivo">De baja</span>), orden: (p) => p.activo },
+  ];
+  const abrir = (p) => puede("catalogo") && setEditando(p);
+
+  return (
+    <>
+      <Cabecera titulo="Proveedores" />
+      <main className="contenido ancho">
+        <Pestanas vista={vista} setVista={setVista} />
+        <div className="buscador">
+          <Search size={20} aria-hidden />
+          <input className="entrada" type="search" placeholder="Proveedor (primeras letras)" aria-label="Buscar proveedor" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        {error && <Aviso tipo="error">{error}</Aviso>}
+        {!lista && !error && <Cargando />}
+        {lista && filtrados.length === 0 && <div className="vacio panel"><p>{q ? "Nada coincide." : "Aún no hay proveedores. Se añaden solos al registrar una entrada."}</p></div>}
+        {filtrados.length > 0 && escritorio && <Tabla columnas={columnas} filas={ordenar(filtrados, columnas, orden)} orden={orden} onOrden={setOrden} onFila={abrir} etiqueta="Proveedores" />}
+        {filtrados.length > 0 && !escritorio && (
+          <ul className="lista">
+            {ordenar(filtrados, columnas, orden).map((p) => (
+              <li key={p.id}>
+                <button className="item" onClick={() => abrir(p)}>
+                  <span className="principal"><strong>{p.nombre}</strong><span className="suave pequeno">{[p.cif, p.contacto].filter(Boolean).join(" · ") || "Sin CIF ni contacto"}</span></span>
+                  {!p.activo && <span className="distintivo">De baja</span>}
+                  {puede("catalogo") && <Pencil size={18} aria-hidden className="suave" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+      {puede("registrar") && (
+        <div className="accion-fija">
+          <button className="boton principal grande" onClick={() => setEditando({})}><Plus size={22} aria-hidden /> Añadir proveedor</button>
+        </div>
+      )}
+      {editando && <EditarProveedor p={editando} onCerrar={() => setEditando(null)} onHecho={(msg) => { setEditando(null); toast(msg); cargar(); }} />}
+    </>
+  );
+}
+
+function EditarProveedor({ p, onCerrar, onHecho }) {
+  const { puede } = useSesion();
+  const nuevo = !p.id;
+  const [f, setF] = useState({ nombre: p.nombre || "", cif: p.cif || "", contacto: p.contacto || "", activo: p.activo ?? true });
+  const [error, setError] = useState("");
+  async function guardar() {
+    setError("");
+    try {
+      if (nuevo) {
+        const { proveedor } = await api.post("/catalogo/proveedores", { nombre: f.nombre.trim() });
+        if (f.cif.trim() || f.contacto.trim()) await api.patch(`/catalogo/proveedores/${proveedor.id}`, { cif: f.cif.trim() || null, contacto: f.contacto.trim() || null });
+      } else {
+        await api.patch(`/catalogo/proveedores/${p.id}`, { nombre: f.nombre.trim(), cif: f.cif.trim() || null, contacto: f.contacto.trim() || null, activo: f.activo });
+      }
+      onHecho(nuevo ? "Proveedor añadido" : "Proveedor guardado");
+    } catch (e) { setError(e.message); }
+  }
+  async function borrar() {
+    try { await api.delete(`/catalogo/proveedores/${p.id}`); onHecho("Proveedor eliminado"); } catch (e) { setError(e.message); }
+  }
+  return (
+    <Hoja titulo={nuevo ? "Añadir proveedor" : "Editar proveedor"} onCerrar={onCerrar}>
+      <Campo etiqueta="Nombre" id="pr-nombre"><input id="pr-nombre" className="entrada" autoFocus value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></Campo>
+      {!nuevo && <p className="suave pequeno">Si cambias el nombre, cambia en todas las entradas de este proveedor.</p>}
+      <Campo etiqueta="CIF / NIF" id="pr-cif"><input id="pr-cif" className="entrada" value={f.cif} onChange={(e) => setF({ ...f, cif: e.target.value })} /></Campo>
+      <Campo etiqueta="Contacto" id="pr-con" ayuda="Teléfono, email o persona de contacto.">
+        <input id="pr-con" className="entrada" value={f.contacto} onChange={(e) => setF({ ...f, contacto: e.target.value })} />
+      </Campo>
+      {!nuevo && <Opciones etiqueta="Estado" valor={f.activo} onCambio={(v) => setF({ ...f, activo: v })} opciones={[{ valor: true, texto: "Activo" }, { valor: false, texto: "De baja" }]} />}
+      {error && <Aviso tipo="error">{error}</Aviso>}
+      <button className="boton principal grande bloque" onClick={guardar} disabled={!f.nombre.trim()}>Guardar</button>
+      {!nuevo && puede("borrar") && <button className="boton peligro bloque" onClick={borrar}><Trash2 size={18} aria-hidden /> Eliminar proveedor</button>}
     </Hoja>
   );
 }

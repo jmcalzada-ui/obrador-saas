@@ -46,6 +46,7 @@ export default function ProductoDetalle({ id }) {
               <dt>Unidad</dt><dd>{producto.unidad_medida} <span className="suave pequeno">(fija)</span></dd>
               {!esPreparado && <><dt>Conservación</dt><dd>{CONSERVACION[producto.conservacion] || "—"}</dd></>}
               {producto.categoria && <><dt>Categoría</dt><dd>{producto.categoria}</dd></>}
+              {producto.proveedores?.length > 0 && <><dt>Proveedores</dt><dd>{producto.proveedores.map((x) => x.nombre).join(", ")}</dd></>}
               {producto.ultimo_precio != null && <><dt>Último precio</dt><dd>{euros(producto.ultimo_precio)} / {producto.unidad_medida}</dd></>}
               {esPreparado && (
                 <>
@@ -123,7 +124,7 @@ function TarjetaMarca({ m, unidad, puedeEditar, puedeSubir, onEditar, onCambio }
       </div>
       <dl className="ficha">
         <dt>Precio ref.</dt>
-        <dd>{m.precio_referencia != null ? `${euros(m.precio_referencia)} / ${unidad}` : "—"}{m.precio_ref_fecha && <span className="suave pequeno"> · {fecha(m.precio_ref_fecha)}</span>}</dd>
+        <dd>{m.precio_referencia != null ? `${euros(m.precio_referencia)} / ${unidad}` : "—"}{m.precio_referencia != null && m.precio_ref_fecha && <span className="suave pequeno"> · {fecha(m.precio_ref_fecha)}</span>}</dd>
         <dt>Último pagado</dt><dd>{m.ultimo_precio != null ? `${euros(m.ultimo_precio)} / ${unidad}` : "—"}</dd>
         <dt>Alérgenos</dt><dd><ResumenAlergenos alergenos={m.alergenos} trazas={m.trazas} /></dd>
         {m.composicion && <><dt>Ingredientes</dt><dd style={{ fontWeight: 400 }}>{m.composicion}</dd></>}
@@ -149,6 +150,7 @@ function TarjetaMarca({ m, unidad, puedeEditar, puedeSubir, onEditar, onCambio }
 }
 
 function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
+  const puedeBorrar = useSesion().puede("borrar");
   const nueva = !m.id;
   const [f, setF] = useState({
     nombre: m.nombre || "", formato: m.formato || "",
@@ -186,12 +188,14 @@ function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
       </Campo>
       {error && <Aviso tipo="error">{error}</Aviso>}
       <button className="boton principal grande bloque" onClick={guardar} disabled={!f.nombre.trim()}>Guardar marca</button>
-      {!nueva && <button className="boton peligro bloque" onClick={borrar}><Trash2 size={18} aria-hidden /> Eliminar marca</button>}
+      {!nueva && puedeBorrar && <button className="boton peligro bloque" onClick={borrar}><Trash2 size={18} aria-hidden /> Eliminar marca</button>}
     </Hoja>
   );
 }
 
+/** Editar todo el producto: datos generales, nombre de sus marcas y de los proveedores que lo traen. */
 function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
+  const { puede } = useSesion();
   const preparado = p.tipo === "preparado" || p.tipo === "elaborado";
   const t = (v) => (v == null ? "" : String(v).replace(".", ","));
   const [f, setF] = useState({
@@ -200,9 +204,13 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
     abatimiento_temp_max: t(p.abatimiento_temp_max ?? 10), abatimiento_minutos_max: t(p.abatimiento_minutos_max ?? 120),
     vida_util_dias: t(p.vida_util_dias), activo: p.activo,
   });
+  const [marcas, setMarcas] = useState(() => (p.marcas || []).map((m) => ({ id: m.id, nombre: m.nombre, original: m.nombre })));
+  const [proveedores, setProveedores] = useState(() => (p.proveedores || []).map((x) => ({ id: x.id, nombre: x.nombre, original: x.nombre })));
   const [error, setError] = useState("");
+  const [confirmarUnidad, setConfirmarUnidad] = useState(null); // aviso del servidor al cambiar la unidad
+  const [guardando, setGuardando] = useState(false);
 
-  async function guardar() {
+  async function guardar(confirmar = false) {
     const cuerpo = { nombre: f.nombre.trim(), unidad_medida: f.unidad_medida, categoria: f.categoria.trim() || null, activo: f.activo };
     if (!preparado) cuerpo.conservacion = f.conservacion;
     if (preparado) {
@@ -215,7 +223,19 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
       }
       if (Object.values(cuerpo).some((v) => Number.isNaN(v))) return setError("Revisa los valores numéricos.");
     }
-    try { await api.patch(`/catalogo/productos/${p.id}`, cuerpo); onGuardado(); } catch (e) { setError(e.message); }
+    if ([...marcas, ...proveedores].some((x) => !x.nombre.trim())) return setError("Los nombres de marcas y proveedores no pueden quedar vacíos.");
+    if (confirmar) cuerpo.confirmar_unidad = true;
+    setGuardando(true);
+    setError("");
+    try {
+      await api.patch(`/catalogo/productos/${p.id}`, cuerpo);
+      for (const m of marcas) if (m.nombre.trim() !== m.original) await api.patch(`/catalogo/marcas/${m.id}`, { nombre: m.nombre.trim() });
+      for (const x of proveedores) if (x.nombre.trim() !== x.original) await api.patch(`/catalogo/proveedores/${x.id}`, { nombre: x.nombre.trim() });
+      onGuardado();
+    } catch (e) {
+      if (e.datos?.codigo === "unidad_sin_conversion") setConfirmarUnidad(e.message);
+      else setError(e.message);
+    } finally { setGuardando(false); }
   }
   async function borrar() {
     try { await api.delete(`/catalogo/productos/${p.id}`); onBorrado(); }
@@ -225,8 +245,18 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
   return (
     <Hoja titulo="Editar producto" onCerrar={onCerrar}>
       <Campo etiqueta="Nombre" id="p-nombre"><input id="p-nombre" className="entrada" value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></Campo>
-      <Opciones etiqueta="Unidad de medida" valor={f.unidad_medida} onCambio={(v) => setF({ ...f, unidad_medida: v })} opciones={["kg", "g", "l", "ml", "ud"].map((u) => ({ valor: u, texto: u }))} />
-      <p className="suave pequeno">Solo se puede cambiar mientras el producto no tenga registros.</p>
+      <Opciones etiqueta="Unidad de medida" valor={f.unidad_medida} onCambio={(v) => { setConfirmarUnidad(null); setF({ ...f, unidad_medida: v }); }} opciones={["kg", "g", "l", "ml", "ud"].map((u) => ({ valor: u, texto: u }))} />
+      {f.unidad_medida !== p.unidad_medida && (
+        <p className="suave pequeno">De kg a g o de l a ml (y al revés) se convierten solas todas las cantidades ya registradas.</p>
+      )}
+      {confirmarUnidad && (
+        <Aviso>
+          <div className="pila" style={{ gap: 8 }}>
+            <span>{confirmarUnidad}</span>
+            <button className="boton" onClick={() => guardar(true)} disabled={guardando}>Cambiar la unidad igualmente</button>
+          </div>
+        </Aviso>
+      )}
       {!preparado && (
         <Opciones etiqueta="Conservación" valor={f.conservacion} onCambio={(v) => setF({ ...f, conservacion: v })}
           opciones={Object.entries(CONSERVACION).map(([valor, texto]) => ({ valor, texto }))} />
@@ -256,10 +286,32 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
         </>
       )}
       <Campo etiqueta="Categoría" id="p-cat"><input id="p-cat" className="entrada" value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })} /></Campo>
+
+      {marcas.length > 0 && (
+        <div className="campo">
+          <span className="etq">Marcas</span>
+          <span className="ayuda">Corrige aquí el nombre. Ingredientes, alérgenos y precio, con el lápiz de cada marca.</span>
+          {marcas.map((m, i) => (
+            <input key={m.id} className="entrada" aria-label={`Marca ${i + 1}`} value={m.nombre}
+              onChange={(e) => setMarcas((l) => l.map((x) => (x.id === m.id ? { ...x, nombre: e.target.value } : x)))} />
+          ))}
+        </div>
+      )}
+      {proveedores.length > 0 && (
+        <div className="campo">
+          <span className="etq">Proveedores que lo han traído</span>
+          <span className="ayuda">El nombre cambia en todas sus entradas, también en las de otros productos.</span>
+          {proveedores.map((x, i) => (
+            <input key={x.id} className="entrada" aria-label={`Proveedor ${i + 1}`} value={x.nombre}
+              onChange={(e) => setProveedores((l) => l.map((y) => (y.id === x.id ? { ...y, nombre: e.target.value } : y)))} />
+          ))}
+        </div>
+      )}
+
       <Opciones etiqueta="Estado" valor={f.activo} onCambio={(v) => setF({ ...f, activo: v })} opciones={[{ valor: true, texto: "Activo" }, { valor: false, texto: "De baja" }]} />
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <button className="boton principal grande bloque" onClick={guardar} disabled={!f.nombre.trim()}>Guardar cambios</button>
-      <button className="boton peligro bloque" onClick={borrar}><Trash2 size={18} aria-hidden /> Eliminar producto</button>
+      <button className="boton principal grande bloque" onClick={() => guardar(false)} disabled={!f.nombre.trim() || guardando}>{guardando ? "Guardando…" : "Guardar cambios"}</button>
+      {puede("borrar") && <button className="boton peligro bloque" onClick={borrar}><Trash2 size={18} aria-hidden /> Eliminar producto</button>}
     </Hoja>
   );
 }

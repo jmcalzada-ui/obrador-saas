@@ -14,7 +14,8 @@ export const ROLES_ASIGNABLES = ["jefe_produccion", "operario", "observador"]; /
 
 const PERMISOS = {
   gestor: ["ver", "registrar", "editar", "borrar", "catalogo", "stock", "usuarios", "obrador", "exportar"],
-  jefe_produccion: ["ver", "registrar", "editar", "exportar"],
+  // El jefe de producción puede editar todo lo guardado, también el catálogo (productos, marcas y proveedores).
+  jefe_produccion: ["ver", "registrar", "editar", "catalogo", "exportar"],
   operario: ["ver", "registrar"],
   observador: ["ver"],
 };

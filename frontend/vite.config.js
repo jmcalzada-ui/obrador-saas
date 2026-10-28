@@ -28,6 +28,8 @@ export default defineConfig({
         // La API nunca se sirve de caché: los datos siempre son los del servidor.
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ["**/*.{js,css,html,svg,woff2}"],
+        // Solo las letras latinas de las tipografías (el resto de alfabetos no se usa).
+        globIgnores: ["**/*{cyrillic,greek,vietnamese}*.woff2"],
       },
     }),
   ],

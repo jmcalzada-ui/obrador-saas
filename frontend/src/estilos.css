@@ -23,13 +23,15 @@
   --rojo: #b3361d;         /* no conforme / borrar */
   --rojo-claro: #f8e4df;
 
-  --letra: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --rotulo: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+  /* Texto: grotesca limpia y compacta. Títulos: serifa sobria. (Cercanas al estilo de Claude.) */
+  --letra: "Instrument Sans Variable", "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --rotulo: "Source Serif 4 Variable", "Source Serif 4", Georgia, "Times New Roman", serif;
+  --cifras: "Instrument Sans Variable", "Instrument Sans", system-ui, sans-serif; /* nº de lote, cantidades, cifras grandes */
 
   --radio: 14px;
   --radio-sm: 10px;
-  --toque: 52px;
-  --nav: 68px;
+  --toque: 46px;
+  --nav: 60px;
   --seguro-abajo: env(safe-area-inset-bottom, 0px);
 
   color-scheme: light;
@@ -41,7 +43,7 @@ body {
   margin: 0;
   background: var(--acero);
   color: var(--tinta);
-  font: 17px/1.5 var(--letra);
+  font: 15px/1.45 var(--letra);
   -webkit-tap-highlight-color: transparent;
 }
 h1, h2, h3 {
@@ -51,9 +53,9 @@ h1, h2, h3 {
   margin: 0;
   letter-spacing: 0.005em;
 }
-h1 { font-size: 1.9rem; }
-h2 { font-size: 1.4rem; }
-h3 { font-size: 1.15rem; }
+h1 { font-size: 1.55rem; }
+h2 { font-size: 1.2rem; }
+h3 { font-size: 1.02rem; }
 p { margin: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 3px solid var(--azul); outline-offset: 2px; border-radius: 6px; }
@@ -72,7 +74,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--linea);
 }
 .cabecera .titulo { flex: 1; min-width: 0; }
-.cabecera .titulo h1 { font-size: 1.45rem; }
+.cabecera .titulo h1 { font-size: 1.3rem; }
 .cabecera .obrador { font-size: 0.85rem; color: var(--tinta-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .contenido {
   flex: 1;
@@ -141,7 +143,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .boton.principal:hover:not(:disabled) { background: var(--azul-hover); }
 .boton.peligro { color: var(--rojo); border-color: #e3b5aa; }
 .boton.bloque { width: 100%; }
-.boton.grande { min-height: 60px; font-size: 1.1rem; }
+.boton.grande { min-height: 50px; font-size: 1rem; }
 .boton-icono {
   width: 44px; height: 44px; border-radius: 50%;
   border: 0; background: transparent; cursor: pointer;
@@ -175,7 +177,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .lista { list-style: none; margin: 0; padding: 0; background: var(--superficie); border-radius: var(--radio); border: 1px solid var(--linea); overflow: hidden; }
 .lista > li + li { border-top: 1px solid var(--linea); }
 .lista .item {
-  width: 100%; min-height: 64px; padding: 12px 16px;
+  width: 100%; min-height: 52px; padding: 10px 14px;
   display: flex; align-items: center; gap: 12px;
   border: 0; background: none; text-align: left; cursor: pointer;
 }
@@ -202,13 +204,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .etiqueta:hover { border-color: #b9c3be; }
 .etiqueta .producto { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .etiqueta .lote {
-  font-family: var(--rotulo); font-weight: 700; font-size: 1.35rem; line-height: 1.1;
+  font-family: var(--cifras); font-weight: 600; font-size: 1.12rem; line-height: 1.15;
   letter-spacing: 0.04em; font-variant-numeric: tabular-nums;
 }
-.etiqueta .lote.sin-lote { font-weight: 500; color: var(--tinta-suave); letter-spacing: 0; font-size: 1.05rem; }
+.etiqueta .lote.sin-lote { font-weight: 500; color: var(--tinta-suave); letter-spacing: 0; font-size: 0.95rem; }
 .etiqueta .meta { grid-column: 1 / -1; font-size: 0.88rem; color: var(--tinta-suave); display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .etiqueta .cantidad { text-align: right; align-self: start; }
-.etiqueta .cantidad strong { font-family: var(--rotulo); font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.etiqueta .cantidad strong { font-family: var(--cifras); font-size: 1.12rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .barra-stock { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--acero); overflow: hidden; }
 .barra-stock > span { display: block; height: 100%; background: var(--verde); border-radius: 3px; }
 .barra-stock.agotado > span { background: var(--linea); }
@@ -232,10 +234,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: 12px 14px;
   border: 1.5px solid var(--linea); border-radius: var(--radio-sm);
   background: var(--superficie);
-  font-size: 1.05rem; /* ≥16 px: el móvil no hace zoom al enfocar */
+  font-size: 16px; /* ≥16 px: el móvil no hace zoom al enfocar */
 }
 .entrada:focus { border-color: var(--azul); outline: none; box-shadow: 0 0 0 3px var(--azul-claro); }
-.entrada.grande { font-family: var(--rotulo); font-size: 1.6rem; font-weight: 600; letter-spacing: 0.02em; }
+.entrada.grande { font-family: var(--cifras); font-size: 1.25rem; font-weight: 600; letter-spacing: 0.02em; }
 textarea.entrada { min-height: 96px; resize: vertical; }
 .buscador { position: relative; }
 .buscador svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--tinta-suave); pointer-events: none; }
@@ -286,7 +288,7 @@ textarea.entrada { min-height: 96px; resize: vertical; }
 
 /* Contraseña temporal: se muestra una vez, grande y copiable */
 .clave {
-  font-family: var(--rotulo); font-size: 1.8rem; font-weight: 700; letter-spacing: 0.08em;
+  font-family: var(--cifras); font-size: 1.5rem; font-weight: 600; letter-spacing: 0.08em;
   text-align: center; padding: 14px; border-radius: var(--radio-sm);
   background: var(--acero); user-select: all; word-break: break-all;
 }
@@ -299,7 +301,7 @@ textarea.entrada { min-height: 96px; resize: vertical; }
 /* ---------- Datos clave ---------- */
 .datos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .dato { background: var(--superficie); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px 16px; }
-.dato strong { display: block; font-family: var(--rotulo); font-size: 2rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.dato strong { display: block; font-family: var(--cifras); font-size: 1.6rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .dato span { font-size: 0.9rem; color: var(--tinta-suave); }
 dl.ficha { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; margin: 0; }
 dl.ficha dt { color: var(--tinta-suave); }
@@ -365,9 +367,9 @@ dl.ficha dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
 .bo-cabecera button, .bo-cabecera a { color: #fff; }
 .bo-cabecera .boton { background: transparent; border-color: rgba(255,255,255,.35); min-height: 40px; }
 .tabla-scroll { overflow-x: auto; background: var(--superficie); border: 1px solid var(--linea); border-radius: var(--radio); }
-table.tabla { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+table.tabla { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 table.tabla th, table.tabla td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--linea); white-space: nowrap; }
-table.tabla th { font-family: var(--rotulo); font-weight: 600; font-size: 0.95rem; color: var(--tinta-suave); background: #f6f8f7; position: sticky; top: 0; }
+table.tabla th { font-family: var(--letra); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-suave); background: #f6f8f7; position: sticky; top: 0; }
 table.tabla td.num, table.tabla th.num { text-align: right; font-variant-numeric: tabular-nums; }
 table.tabla tbody tr { cursor: pointer; }
 table.tabla tbody tr:hover { background: #f7f9f8; }
@@ -408,7 +410,7 @@ table.tabla tr:last-child td { border-bottom: 0; }
   .nav { width: 264px; grid-auto-rows: auto; gap: 2px; padding: 18px 12px; }
   .nav-marca { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; margin-bottom: 8px; border-bottom: 1px solid var(--linea); }
   .nav-marca span { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-  .nav-marca strong { font-family: var(--rotulo); font-size: 1.1rem; white-space: nowrap; }
+  .nav-marca strong { font-family: var(--rotulo); font-size: 1.05rem; white-space: nowrap; }
   .nav-marca small { color: var(--tinta-suave); font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nav button { flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 48px; padding: 0 12px; border-radius: var(--radio-sm); font-size: 0.97rem; text-align: left; white-space: nowrap; }
   .nav button:hover { background: var(--acero); color: var(--tinta); }
@@ -433,7 +435,7 @@ table.datos-tabla td.ajustar { white-space: normal; min-width: 140px; }
 table.datos-tabla tbody tr:nth-child(even) { background: #fafbfb; }
 table.datos-tabla tbody tr:hover { background: var(--azul-claro); }
 table.datos-tabla tbody tr:focus-visible { outline: 3px solid var(--azul); outline-offset: -3px; }
-.lote-tabla { font-family: var(--rotulo); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lote-tabla { font-family: var(--cifras); font-weight: 600; font-size: 0.92rem; letter-spacing: 0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---------- Logotipo del obrador ---------- */
 .logo-casilla { min-height: 96px; display: flex; align-items: center; justify-content: center; padding: 12px; border: 1.5px dashed var(--linea); border-radius: var(--radio-sm); background: #fafbfb; }
@@ -512,4 +514,41 @@ input.entrada[type="date"] { -webkit-appearance: none; appearance: none; display
   .filtros .fechas label { flex: 0 0 auto; width: auto; }
   .filtros .fechas .entrada { width: 11.5em; }
   .filtros .exportar { flex: 0 0 auto; flex-wrap: nowrap; gap: 8px; }
+}
+
+/* ---------- Tipografía y densidad ----------
+   Letra más pequeña y espacios más ajustados: más información en pantalla. */
+h1, h2, h3 { font-weight: 600; letter-spacing: -0.005em; }
+strong, b, dl.ficha dd { font-weight: 600; }
+.boton { font-weight: 600; padding: 0 16px; }
+.opcion { padding: 8px 10px; }
+.opciones:not(.anchas) .opcion { font-weight: 600; }
+.panel { padding: 14px; }
+.contenido { gap: 14px; }
+.campo { gap: 5px; }
+.campo > label, .campo > .etq { font-weight: 600; font-size: 0.93rem; }
+.entrada { padding: 10px 12px; }
+.distintivo { font-weight: 600; font-size: 0.78rem; padding: 1px 9px; }
+.etiqueta { padding: 11px 14px 11px 20px; }
+.etiqueta .producto { font-weight: 600; }
+.nav button { font-size: 0.74rem; }
+table.tabla th, table.tabla td { padding: 8px 10px; }
+.filtros .exportar .boton { min-height: 40px; font-size: 0.9rem; }
+.filtros .fechas .entrada { min-height: 42px; }
+.filtros .buscador .entrada { min-height: 42px; }
+.selector-orden select { min-height: 42px; font-size: 0.95rem; }
+.alergeno { min-height: 42px; font-size: 0.92rem; }
+.hoja { gap: 14px; }
+@media (min-width: 1024px) {
+  :root { --toque: 40px; }
+  body { font-size: 14.5px; }
+  .entrada { font-size: 0.95rem; padding: 8px 11px; }
+  .entrada.grande { font-size: 1.15rem; }
+  .boton.grande { min-height: 44px; font-size: 0.95rem; }
+  .nav button { min-height: 40px; font-size: 0.92rem; }
+  .lista .item { min-height: 46px; padding: 8px 14px; }
+  .cabecera { padding-top: 12px; padding-bottom: 12px; }
+  .filtros .buscador .entrada, .filtros .fechas .entrada { min-height: 38px; }
+  .filtros .exportar .boton { min-height: 38px; }
+  .filtros { padding: 12px 14px; }
 }

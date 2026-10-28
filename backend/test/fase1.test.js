@@ -140,3 +140,33 @@ test("al editar un lote se puede cambiar entre producción interna y final", asy
   assert.equal(b.body.produccion.unidades, 200);
   assert.equal((await O.api.get(`/api/producciones/${cr.id}`)).body.ingredientes.length, 2);
 });
+
+test("catálogo editable por completo: nombre, unidad (con conversión), marcas y proveedores", async () => {
+  const sal = (await O.api.post("/api/catalogo/productos", { nombre: "Sal", unidad_medida: "kg" })).body.producto;
+  const m = (await O.api.post(`/api/catalogo/productos/${sal.id}/marcas`, { nombre: "Salinas", precio_referencia: 0.8 })).body.marca;
+  const prov = (await O.api.post("/api/catalogo/proveedores", { nombre: "Distribuciones Ana" })).body.proveedor;
+  const rec = (await O.api.post("/api/recepciones", { fecha: "2026-10-20", producto_id: sal.id, marca_id: m.id, proveedor_id: prov.id, cantidad: 2, precio_total: 1.6, num_lote: "S-1" })).body.recepcion;
+  // Nombres
+  assert.equal((await O.api.patch(`/api/catalogo/productos/${sal.id}`, { nombre: "Sal marina" })).status, 200);
+  assert.equal((await O.api.patch(`/api/catalogo/productos/${sal.id}`, { nombre: "Harina" })).status, 409, "nombre repetido");
+  assert.equal((await O.api.patch(`/api/catalogo/marcas/${m.id}`, { nombre: "Salinas del Sur" })).status, 200);
+  const p = await O.api.patch(`/api/catalogo/proveedores/${prov.id}`, { nombre: "Distribuciones Ana S.L.", cif: "B12345678" });
+  assert.equal(p.status, 200, JSON.stringify(p.body));
+  // Unidad kg → g con registros: se convierten las cantidades y el precio por unidad
+  assert.equal((await O.api.patch(`/api/catalogo/productos/${sal.id}`, { unidad_medida: "g" })).status, 200);
+  const r = (await O.api.get(`/api/recepciones/${rec.id}`)).body.recepcion;
+  assert.equal(r.cantidad, 2000);
+  assert.equal(r.unidad, "g");
+  assert.equal(r.precio_total, 1.6);
+  assert.equal(r.marca, "Salinas del Sur");
+  assert.equal(r.proveedor, "Distribuciones Ana S.L.");
+  const marca = (await O.api.get("/api/catalogo/productos?tipo=materia_prima")).body.productos.find((x) => x.id === sal.id).marcas[0];
+  assert.equal(marca.precio_referencia, 0.0008);
+  // g → ud no se puede convertir: hay que confirmarlo
+  const sinConfirmar = await O.api.patch(`/api/catalogo/productos/${sal.id}`, { unidad_medida: "ud" });
+  assert.equal(sinConfirmar.status, 409);
+  assert.equal(sinConfirmar.body.codigo, "unidad_sin_conversion");
+  assert.equal((await O.api.patch(`/api/catalogo/productos/${sal.id}`, { unidad_medida: "ud", confirmar_unidad: true })).status, 200);
+  // Un proveedor con entradas no se borra
+  assert.equal((await O.api.delete(`/api/catalogo/proveedores/${prov.id}`)).status, 409);
+});
