@@ -25,6 +25,7 @@ catalogoRouter.get(
       const { rows } = await c.query(
         `SELECT p.id, p.nombre, p.tipo, p.unidad_medida, p.alergenos, p.categoria, p.conservacion, p.activo,
                 p.proceso_termico, p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max,
+                p.congelacion_temp_max, p.congelacion_minutos_max,
                 p.vida_util_dias, p.ingredientes_habituales, p.creado_en,
                 (SELECT round(r.precio_total / r.cantidad, 4) FROM recepciones r
                   WHERE r.producto_id = p.id AND r.precio_total IS NOT NULL ORDER BY r.fecha DESC, r.creado_en DESC LIMIT 1) AS ultimo_precio,
@@ -72,19 +73,20 @@ const esquemaProducto = z.object({
   abatimiento_temp_max: z.number().min(-40).max(60).nullable().optional(),
   abatimiento_minutos_max: z.number().int().min(1).max(1440).nullable().optional(),
   vida_util_dias: z.number().int().min(1).max(3650).nullable().optional(),
+  congelacion_temp_max: z.number().min(-60).max(0).optional(),
+  congelacion_minutos_max: z.number().int().min(1).max(2880).optional(),
 });
 
 // Objetivos por defecto de un preparado con proceso térmico (el gestor puede ajustarlos):
 // cocción ≥ 75 °C en el centro y abatimiento hasta ≤ 10 °C en menos de 2 horas.
 export const OBJETIVOS_TERMICOS = { coccion_temp_min: 75, abatimiento_temp_max: 10, abatimiento_minutos_max: 120 };
-export const OBJETIVOS_CONGELACION = { abatimiento_temp_max: -18, abatimiento_minutos_max: 240 };
+// Congelación (cuando un lote se guarda congelado): −18 °C en 4 h, ajustable en cada producto.
 
 export async function insertarProducto(c, obradorId, d) {
   // Producción interna (preparado) y final (elaborado) pueden llevar proceso térmico.
   const elaborado = d.tipo === "preparado" || d.tipo === "elaborado";
   const termico = elaborado && d.proceso_termico === true;
-  // Congelado: el enfriado es una congelación (objetivo −18 °C en 4 h, ajustable).
-  const congelado = elaborado && d.conservacion === "congelado";
+
   const { rows } = await c.query(
     `INSERT INTO productos (obrador_id, nombre, tipo, unidad_medida, alergenos, categoria, conservacion, proceso_termico,
                             coccion_temp_min, abatimiento_temp_max, abatimiento_minutos_max, vida_util_dias, trazas)
@@ -92,8 +94,8 @@ export async function insertarProducto(c, obradorId, d) {
     [obradorId, d.nombre, d.tipo, d.unidad_medida, d.alergenos ?? [], d.categoria ?? null, d.conservacion ?? null,
      elaborado ? Boolean(d.proceso_termico) : null,
      termico ? d.coccion_temp_min ?? OBJETIVOS_TERMICOS.coccion_temp_min : null,
-     congelado ? d.abatimiento_temp_max ?? OBJETIVOS_CONGELACION.abatimiento_temp_max : termico ? d.abatimiento_temp_max ?? OBJETIVOS_TERMICOS.abatimiento_temp_max : null,
-     congelado ? d.abatimiento_minutos_max ?? OBJETIVOS_CONGELACION.abatimiento_minutos_max : termico ? d.abatimiento_minutos_max ?? OBJETIVOS_TERMICOS.abatimiento_minutos_max : null,
+     termico ? d.abatimiento_temp_max ?? OBJETIVOS_TERMICOS.abatimiento_temp_max : null,
+     termico ? d.abatimiento_minutos_max ?? OBJETIVOS_TERMICOS.abatimiento_minutos_max : null,
      d.vida_util_dias ?? null, d.trazas ?? []]
   );
   return { ...rows[0], marcas: [] };

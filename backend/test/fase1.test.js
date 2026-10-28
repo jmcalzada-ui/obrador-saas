@@ -196,3 +196,26 @@ test("producción congelada: control de congelación (−18 °C) y unidades con 
   assert.equal(mal.status, 400);
   assert.equal(mal.body.campo, "medida_correctora");
 });
+
+test("cada lote indica su conservación: un producto refrigerado guardado congelado pide la congelación", async () => {
+  const r = await O.api.post("/api/producciones", {
+    nuevo: { nombre: "Croquetas de bacalao", unidad_medida: "kg", proceso_termico: false, conservacion: "refrigerado" },
+    fecha: "2026-10-22", num_lote: "BAC-1", cantidad: 5,
+    ingredientes: [{ origen: "manual", producto_id: harina.id, num_lote: "", cantidad: 1 }],
+  });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.produccion.control_termico.estado, "no_aplica", "refrigerado y sin cocción: sin control");
+  const ed = await O.api.patch(`/api/producciones/${r.body.produccion.id}`, { conservacion: "congelado" });
+  assert.equal(ed.status, 200, JSON.stringify(ed.body));
+  assert.equal(ed.body.produccion.conservacion, "congelado");
+  assert.equal(ed.body.produccion.control_termico.estado, "pendiente");
+  assert.equal(ed.body.produccion.control_termico.objetivo_temp, -18);
+  const ok = await O.api.patch(`/api/producciones/${r.body.produccion.id}`, {
+    abat_temp_inicio: 18, abat_hora_inicio: "2026-10-22T09:00:00Z", abat_temp_fin: -18.5, abat_hora_fin: "2026-10-22T11:30:00Z",
+  });
+  assert.equal(ok.body.produccion.control_termico.estado, "ok");
+  // Al crearlo directamente congelado también lo pide
+  const n = await O.api.post("/api/producciones", { producto_id: r.body.produccion.producto_id, conservacion: "congelado",
+    fecha: "2026-10-23", num_lote: "BAC-2", cantidad: 5, ingredientes: [{ origen: "manual", producto_id: harina.id, num_lote: "", cantidad: 1 }] });
+  assert.equal(n.body.produccion.control_termico.estado, "pendiente");
+});

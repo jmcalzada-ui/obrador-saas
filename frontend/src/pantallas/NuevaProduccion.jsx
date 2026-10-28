@@ -42,7 +42,7 @@ export default function NuevaProduccion({ id, tipo }) {
   const [elegido, setElegido] = useState(null); // preparado guardado
   const [nuevo, setNuevo] = useState(null); // { nombre, unidad_medida, proceso_termico, vida_util_dias, conservacion }
   const [filas, setFilas] = useState([filaVacia()]);
-  const [lote, setLote] = useState({ num_lote: "", cantidad: "", unidades: "", unidades_tipo: "", fecha: hoyISO(), caducidad: "", responsable: usuario.nombre, observaciones: "" });
+  const [lote, setLote] = useState({ num_lote: "", cantidad: "", unidades: "", unidades_tipo: "", conservacion: "", fecha: hoyISO(), caducidad: "", responsable: usuario.nombre, observaciones: "" });
   const [termico, setTermico] = useState({ coccion_temp: "", coccion_minutos: "", abat_temp_inicio: "", abat_hora_inicio: horaAhora(), abat_temp_fin: "", abat_hora_fin: "", medida_correctora: "" });
 
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function NuevaProduccion({ id, tipo }) {
             cantidad: txt(i.cantidad),
           })));
           setLote({
-            num_lote: lote0.num_lote, cantidad: txt(lote0.cantidad), unidades: txt(lote0.unidades), unidades_tipo: lote0.unidades_tipo || "", fecha: lote0.fecha,
+            num_lote: lote0.num_lote, cantidad: txt(lote0.cantidad), unidades: txt(lote0.unidades), unidades_tipo: lote0.unidades_tipo || "", conservacion: lote0.conservacion || "", fecha: lote0.fecha,
             caducidad: lote0.caducidad || "", responsable: lote0.responsable || "", observaciones: lote0.observaciones || "",
           });
           setTermico({
@@ -81,13 +81,16 @@ export default function NuevaProduccion({ id, tipo }) {
   }, []);
 
   const datos = elegido || nuevo; // lo que define el preparado
-  // Control de temperaturas: cocción y abatimiento (proceso térmico) y/o congelación (se conserva congelado).
-  const congelado = datos?.conservacion === "congelado";
+  // Control de temperaturas: cocción y abatimiento (proceso térmico) y/o congelación (si el lote se guarda congelado).
+  const conservacionLote = lote.conservacion || datos?.conservacion || "refrigerado";
+  const congelado = conservacionLote === "congelado";
   const conTermico = Boolean(datos?.proceso_termico) || congelado;
+  const deProducto = (k, porDefecto) => (elegido?.[k] != null ? Number(elegido[k]) : porDefecto);
   const obj = {
-    ...OBJETIVOS,
-    ...(congelado ? OBJETIVOS_CONGELACION : {}),
-    ...(elegido ? Object.fromEntries(["coccion_temp_min", "abatimiento_temp_max", "abatimiento_minutos_max"].filter((k) => elegido[k] != null).map((k) => [k, Number(elegido[k])])) : {}),
+    coccion_temp_min: deProducto("coccion_temp_min", OBJETIVOS.coccion_temp_min),
+    ...(congelado
+      ? { abatimiento_temp_max: deProducto("congelacion_temp_max", OBJETIVOS_CONGELACION.abatimiento_temp_max), abatimiento_minutos_max: deProducto("congelacion_minutos_max", OBJETIVOS_CONGELACION.abatimiento_minutos_max) }
+      : { abatimiento_temp_max: deProducto("abatimiento_temp_max", OBJETIVOS.abatimiento_temp_max), abatimiento_minutos_max: deProducto("abatimiento_minutos_max", OBJETIVOS.abatimiento_minutos_max) }),
   };
   const unidad = datos?.unidad_medida;
   const pasos = ["preparado", "ingredientes", "lote", ...(conTermico ? ["termico"] : []), "revisar"];
@@ -184,7 +187,7 @@ export default function NuevaProduccion({ id, tipo }) {
         ...(elegido ? { producto_id: elegido.id } : { nuevo: { ...nuevo, nombre: nuevo.nombre.trim(), vida_util_dias: aNumero(nuevo.vida_util_dias) } }),
         fecha: lote.fecha, num_lote: lote.num_lote.trim(), cantidad: aNumero(lote.cantidad), caducidad: lote.caducidad || null,
         responsable: lote.responsable.trim(), observaciones: lote.observaciones.trim(),
-        unidades: lote.unidades.trim() ? aNumero(lote.unidades) : null, unidades_tipo: lote.unidades_tipo.trim(),
+        unidades: lote.unidades.trim() ? aNumero(lote.unidades) : null, unidades_tipo: lote.unidades_tipo.trim(), conservacion: conservacionLote,
         ingredientes: filas.filter((f) => f.producto).map((f) => f.manual
           ? { origen: "manual", producto_id: f.producto.id, num_lote: f.num_lote.trim(), cantidad: aNumero(f.cantidad) }
           : { origen: f.lote.origen, lote_id: f.lote.id, cantidad: aNumero(f.cantidad) }),
@@ -231,7 +234,7 @@ export default function NuevaProduccion({ id, tipo }) {
         {paso === "ingredientes" && (
           <PasoIngredientes filas={filas} setFilas={setFilas} catalogo={catalogo.filter((c) => c.id !== elegido?.id && c.tipo !== "elaborado")} setCatalogo={setCatalogo} lotes={lotes} conLotePorDefecto={conLotePorDefecto} />
         )}
-        {paso === "lote" && <PasoLote cfg={cfg} lote={lote} setLote={setLote} unidad={unidad} />}
+        {paso === "lote" && <PasoLote cfg={cfg} lote={lote} setLote={setLote} unidad={unidad} conservacion={conservacionLote} />}
         {paso === "termico" && (
           <ControlTermico obj={obj} v={termico} fecha={lote.fecha} coccion={Boolean(datos?.proceso_termico)} congelado={congelado} cambiar={(p) => setTermico((x) => ({ ...x, ...p }))} />
         )}
@@ -462,7 +465,7 @@ function LoteSugerido({ fila, lotes, cambiar }) {
   );
 }
 
-function PasoLote({ cfg, lote, setLote, unidad }) {
+function PasoLote({ cfg, lote, setLote, unidad, conservacion }) {
   const c = (p) => setLote((x) => ({ ...x, ...p }));
   return (
     <div className="pila">
@@ -489,6 +492,9 @@ function PasoLote({ cfg, lote, setLote, unidad }) {
           <input id="pl-cad" className="entrada" type="date" value={lote.caducidad} onChange={(e) => c({ caducidad: e.target.value })} />
         </Campo>
       </div>
+      <Opciones etiqueta="Conservación del lote" valor={conservacion} onCambio={(v) => c({ conservacion: v })}
+        opciones={[{ valor: "refrigerado", texto: "Refrigerado" }, { valor: "congelado", texto: "Congelado" }, { valor: "ambiente", texto: "Ambiente" }]} />
+      {conservacion === "congelado" && <p className="suave pequeno">En el paso siguiente se anota la congelación: temperatura y hora al meterlo y al llegar a la temperatura objetivo.</p>}
       <Campo etiqueta="Responsable" id="pl-resp">
         <input id="pl-resp" className="entrada" value={lote.responsable} onChange={(e) => c({ responsable: e.target.value })} />
       </Campo>
@@ -507,6 +513,7 @@ function PasoRevisar({ cfg, interna, datos, filas, lote, unidad, termico, obj, i
         <dt>Producto</dt><dd>{datos.nombre}</dd>
         <dt>Tipo</dt><dd>{interna ? "Producción interna" : "Producción final"}</dd>
         <dt>Lote</dt><dd>{lote.num_lote}</dd>
+        <dt>Conservación</dt><dd>{{ refrigerado: "Refrigerado", congelado: "Congelado", ambiente: "Ambiente" }[lote.conservacion || datos.conservacion] || "Refrigerado"}</dd>
         <dt>Obtenido</dt><dd>{num(aNumero(lote.cantidad))} {unidad}{lote.unidades ? ` · ${lote.unidades} ${lote.unidades_tipo || "uds."}` : ""}</dd>
         <dt>Fecha</dt><dd>{fecha(lote.fecha)}</dd>
         <dt>Caducidad</dt><dd>{fecha(lote.caducidad)}</dd>
@@ -529,7 +536,7 @@ function PasoRevisar({ cfg, interna, datos, filas, lote, unidad, termico, obj, i
         <section className="panel pila">
           <div className="fila entre"><h3>Control térmico</h3><button className="boton" onClick={() => irA("termico")}>Cambiar</button></div>
           {datos.proceso_termico && <p>Cocción: {termico.coccion_temp || "—"} °C · {termico.coccion_minutos || "—"} min {r.coccionOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>}
-          <p>{datos.conservacion === "congelado" ? "Congelación" : "Abatimiento"}: {termico.abat_hora_fin ? `${termico.abat_temp_inicio || "—"} → ${termico.abat_temp_fin} °C en ${r.minutos} min` : "pendiente de completar"} {r.abatOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>
+          <p>{(lote.conservacion || datos.conservacion) === "congelado" ? "Congelación" : "Abatimiento"}: {termico.abat_hora_fin ? `${termico.abat_temp_inicio || "—"} → ${termico.abat_temp_fin} °C en ${r.minutos} min` : "pendiente de completar"} {r.abatOk === false && <span className="distintivo rojo">Fuera de objetivo</span>}</p>
           {termico.medida_correctora && <p className="suave">Medida correctora: {termico.medida_correctora}</p>}
         </section>
       )}

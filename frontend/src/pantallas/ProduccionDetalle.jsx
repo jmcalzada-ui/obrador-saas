@@ -62,6 +62,7 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
             <dl className="ficha panel">
               <dt>Fecha</dt><dd>{fecha(p.fecha)}</dd>
               <dt>Caducidad</dt><dd>{fecha(p.caducidad)}</dd>
+              <dt>Conservación</dt><dd>{{ refrigerado: "Refrigerado", congelado: "Congelado", ambiente: "Ambiente" }[p.conservacion] || "—"}</dd>
               <dt>Responsable</dt><dd>{p.responsable || "—"}</dd>
               {p.observaciones && <><dt>Notas</dt><dd style={{ fontWeight: 400 }}>{p.observaciones}</dd></>}
               <dt>Registró</dt><dd>{p.creado_por_nombre || "—"}</dd>

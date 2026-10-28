@@ -39,14 +39,12 @@ export function evaluarTermico(p) {
 
 /** ¿Lleva control de temperaturas? (cocción/abatimiento o congelación) */
 export const aplicaControl = (p) => Boolean(p.proceso_termico) || p.conservacion === "congelado";
-/** Objetivo de enfriado: abatimiento (10 °C en 2 h) o congelación (−18 °C en 4 h). */
+/** Objetivo de enfriado: abatimiento (10 °C en 2 h) o, si el lote se congela, congelación (−18 °C en 4 h). */
 export function objetivosEnfriado(p) {
   const congelado = p.conservacion === "congelado";
-  return {
-    congelado,
-    abatimiento_temp_max: p.abatimiento_temp_max ?? (congelado ? -18 : 10),
-    abatimiento_minutos_max: p.abatimiento_minutos_max ?? (congelado ? 240 : 120),
-  };
+  return congelado
+    ? { congelado, abatimiento_temp_max: p.congelacion_temp_max ?? -18, abatimiento_minutos_max: p.congelacion_minutos_max ?? 240 }
+    : { congelado, abatimiento_temp_max: p.abatimiento_temp_max ?? 10, abatimiento_minutos_max: p.abatimiento_minutos_max ?? 120 };
 }
 
 const conTermico = (r) => ({ ...r, control_termico: evaluarTermico(r) });
@@ -72,7 +70,8 @@ export function selectElaboracion(cfg) {
   SELECT pp.id, pp.fecha, pp.producto_id, p.nombre AS producto, pp.num_lote, pp.responsable, pp.cantidad, pp.unidad,
          pp.unidades, pp.unidades_tipo,
          pp.caducidad, pp.observaciones, pp.activo, ${cfg.conStock ? "s.disponible" : "NULL::numeric AS disponible"},
-         p.proceso_termico, p.conservacion, p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max,
+         p.proceso_termico, COALESCE(pp.conservacion, p.conservacion) AS conservacion, pp.conservacion AS conservacion_lote,
+         p.coccion_temp_min, p.abatimiento_temp_max, p.abatimiento_minutos_max, p.congelacion_temp_max, p.congelacion_minutos_max,
          pp.coccion_temp, pp.coccion_minutos, pp.abat_temp_inicio, pp.abat_hora_inicio, pp.abat_temp_fin, pp.abat_hora_fin,
          pp.medida_correctora, pp.declaracion_ingredientes, pp.creado_en, pp.modificado_en,
          uc.nombre AS creado_por_nombre, um.nombre AS modificado_por_nombre
@@ -141,7 +140,7 @@ const camposTermicos = {
 // Columnas que tienen los dos tipos de lote (para pasar un lote de uno a otro).
 const COLUMNAS_LOTE = ["obrador_id", "fecha", "producto_id", "num_lote", "responsable", "cantidad", "unidad", "observaciones", "activo",
   "caducidad", "coccion_temp", "coccion_minutos", "abat_temp_inicio", "abat_hora_inicio", "abat_temp_fin", "abat_hora_fin",
-  "medida_correctora", "declaracion_ingredientes", "unidades", "unidades_tipo", "creado_por", "creado_en"];
+  "medida_correctora", "declaracion_ingredientes", "unidades", "unidades_tipo", "conservacion", "creado_por", "creado_en"];
 
 /**
  * Pasa un lote de producción interna a final o al revés, con sus
@@ -251,6 +250,7 @@ function crearRouter(cfg) {
     cantidad: z.number({ invalid_type_error: "Indica la cantidad obtenida." }).positive("La cantidad obtenida debe ser mayor que 0."),
     unidades: z.number().int().min(0).max(10000000).nullable().optional(),
     unidades_tipo: z.string().trim().max(40).default(""),
+    conservacion: z.enum(["ambiente", "refrigerado", "congelado"]).nullable().optional(),
     caducidad: z.string().date().nullable().optional(),
     responsable: z.string().trim().max(80).default(""),
     observaciones: z.string().max(2000).default(""),
@@ -307,7 +307,7 @@ function crearRouter(cfg) {
 
   /** Si el control térmico está completo y fuera de rango, exige medida correctora. */
   function exigirCorrectora(producto, d) {
-    const t = evaluarTermico({ ...producto, ...d });
+    const t = evaluarTermico({ ...producto, ...d, conservacion: d.conservacion ?? producto.conservacion });
     if (t.estado === "fuera_de_rango" && !(d.medida_correctora || "").trim()) {
       throw fallo("El control térmico está fuera de rango: anota la medida correctora aplicada.", 400, { campo: "medida_correctora" });
     }
@@ -342,16 +342,16 @@ function crearRouter(cfg) {
             // La casilla "producción interna" manda: el nombre guardado recuerda la última elección.
             if (producto.tipo !== cfg.tipo) await c.query("UPDATE productos SET tipo = $2 WHERE id = $1", [producto.id, cfg.tipo]);
           }
-          exigirCorrectora(producto, d);
+          exigirCorrectora({ ...producto, conservacion: d.conservacion ?? producto.conservacion }, d);
           const caducidad = d.caducidad ?? (producto.vida_util_dias
             ? new Date(new Date(d.fecha).getTime() + producto.vida_util_dias * 86400000).toISOString().slice(0, 10) : null);
-          const extraCol = cfg.tabla === "producciones" ? ", unidades, unidades_tipo, estado" : ", unidades, unidades_tipo";
-          const extraVal = cfg.tabla === "producciones" ? ", $18, $19, 'completada'" : ", $18, $19";
+          const extraCol = cfg.tabla === "producciones" ? ", unidades, unidades_tipo, conservacion, estado" : ", unidades, unidades_tipo, conservacion";
+          const extraVal = cfg.tabla === "producciones" ? ", $18, $19, $20, 'completada'" : ", $18, $19, $20";
           const valores = [req.usuario.obrador_id, d.fecha, producto.id, d.num_lote, d.responsable || req.usuario.nombre, d.cantidad,
             producto.unidad_medida, caducidad, d.observaciones, d.coccion_temp ?? null, d.coccion_minutos ?? null,
             d.abat_temp_inicio ?? null, d.abat_hora_inicio ?? null, d.abat_temp_fin ?? null, d.abat_hora_fin ?? null,
             d.medida_correctora ?? "", req.usuario.id];
-          valores.push(d.unidades ?? null, d.unidades ?? null ? d.unidades_tipo : "");
+          valores.push(d.unidades ?? null, d.unidades ?? null ? d.unidades_tipo : "", d.conservacion ?? null);
           const { rows: [{ id }] } = await c.query(
             `INSERT INTO ${cfg.tabla} (obrador_id, fecha, producto_id, num_lote, responsable, cantidad, unidad, caducidad, observaciones,
                                        coccion_temp, coccion_minutos, abat_temp_inicio, abat_hora_inicio, abat_temp_fin, abat_hora_fin,
@@ -427,6 +427,7 @@ function crearRouter(cfg) {
         cantidad: z.number().positive().optional(),
         unidades: z.number().int().min(0).max(10000000).nullable().optional(),
         unidades_tipo: z.string().trim().max(40).optional(),
+        conservacion: z.enum(["ambiente", "refrigerado", "congelado"]).nullable().optional(),
         caducidad: z.string().date().nullable().optional(),
         responsable: z.string().trim().max(80).optional(),
         observaciones: z.string().max(2000).optional(),
@@ -463,7 +464,8 @@ function crearRouter(cfg) {
             const usado = Number(actual.cantidad) - Number(actual.disponible);
             if (campos.cantidad < usado) throw fallo(`Ya se han usado ${usado} ${actual.unidad} de este lote; la cantidad no puede ser menor.`, 409);
           }
-          if (aplicaControl(actual) && claves.some((k) => k.startsWith("coccion") || k.startsWith("abat"))) exigirCorrectora(actual, { ...actual, ...campos });
+          const tras = { ...actual, ...campos, conservacion: campos.conservacion !== undefined ? campos.conservacion ?? actual.conservacion : actual.conservacion };
+          if (aplicaControl(tras) && claves.some((k) => k.startsWith("coccion") || k.startsWith("abat") || k === "conservacion")) exigirCorrectora(actual, tras);
           if (claves.length || destino !== cfg) {
             const sets = [...claves.map((k, i) => `${k} = $${i + 2}`), `modificado_por = $${claves.length + 2}`, "modificado_en = now()"];
             await c.query(`UPDATE ${destino.tabla} SET ${sets.join(", ")} WHERE id = $1`, [req.params.id, ...claves.map((k) => campos[k]), req.usuario.id]);
