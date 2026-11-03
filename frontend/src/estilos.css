@@ -16,6 +16,9 @@
   --azul: #1e4e8c;         /* acción principal */
   --azul-hover: #173e70;
   --azul-claro: #e3ecf7;
+  --azul-oscuro: #12345e;
+  --azul-borde: #bcd0ea;
+  --azul-sombra: rgba(30, 78, 140, 0.28);
   --verde: #2c7a4b;        /* conforme / con stock */
   --verde-claro: #e2f1e7;
   --ambar: #a86a00;        /* aviso: caduca pronto, prueba gratuita */
@@ -170,7 +173,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .aviso.error { background: var(--rojo-claro); color: #6b1d0d; }
 .aviso.ok { background: var(--verde-claro); color: #164a2b; }
-.aviso.info { background: var(--azul-claro); color: #12345e; }
+.aviso.info { background: var(--azul-claro); color: var(--azul-oscuro); }
 .vacio { text-align: center; padding: 32px 16px; color: var(--tinta-suave); display: flex; flex-direction: column; gap: 14px; align-items: center; }
 
 /* Lista de filas grandes y tocables */
@@ -423,7 +426,7 @@ table.tabla tr:last-child td { border-bottom: 0; }
   .contenido.ancho { max-width: 1320px; }
   /* La acción principal flota abajo a la derecha, sin tapar la tabla */
   .accion-fija { left: auto; right: 32px; bottom: 24px; padding: 0; background: none; }
-  .accion-fija > * { width: auto; max-width: none; box-shadow: 0 6px 20px rgba(30, 78, 140, 0.28); }
+  .accion-fija > * { width: auto; max-width: none; box-shadow: 0 6px 20px var(--azul-sombra); }
   .accion-fija .fila > * { box-shadow: none; }
   .accion-fija .fila { background: var(--superficie); padding: 10px; border-radius: 16px; border: 1px solid var(--linea); box-shadow: 0 6px 20px rgba(20, 28, 25, 0.12); min-width: 480px; }
   .toast { bottom: 96px; }
@@ -470,7 +473,7 @@ button.dato { text-align: left; cursor: pointer; font: inherit; color: inherit; 
 button.dato:hover { border-color: #b9c3be; }
 @media (min-width: 1024px) {
   .accion-fija .fila.doble { min-width: 0; background: none; border: 0; box-shadow: none; padding: 0; gap: 10px; }
-  .accion-fija .fila.doble > * { box-shadow: 0 6px 20px rgba(30, 78, 140, 0.28); padding: 0 24px; }
+  .accion-fija .fila.doble > * { box-shadow: 0 6px 20px var(--azul-sombra); padding: 0 24px; }
 }
 
 /* Lista de ingredientes (para la etiqueta) */
@@ -555,7 +558,7 @@ table.tabla th, table.tabla td { padding: 8px 10px; }
 
 /* Unidades obtenidas: número + tipo (cajas, bandejas…) */
 .unidades-tipo { display: grid; grid-template-columns: 7em 1fr; gap: 8px; }
-.alta-rapida { background: var(--azul-claro); border-color: #bcd0ea; }
+.alta-rapida { background: var(--azul-claro); border-color: var(--azul-borde); }
 
 /* Salidas: líneas de un pedido en la tabla */
 .lineas-salida { display: flex; flex-direction: column; gap: 2px; }
@@ -563,3 +566,21 @@ table.tabla th, table.tabla td { padding: 8px 10px; }
 .linea-cantidades label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .linea-cantidades label span { font-size: 0.8rem; font-weight: 600; color: var(--tinta-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button.enlace { border: 0; background: none; padding: 0; color: var(--azul); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+/* ---------- Patrones de color (Más → Colores de la app) ----------
+   El color principal se llama --azul por historia; cada tema lo cambia.
+   Todos tienen contraste suficiente con texto blanco (AA). */
+:root[data-tema="verde"]   { --azul: #1f6b45; --azul-hover: #17553a; --azul-claro: #e1f0e7; --azul-oscuro: #10402a; --azul-borde: #b5d8c3; --azul-sombra: rgba(31, 107, 69, 0.28); }
+:root[data-tema="granate"] { --azul: #9b2335; --azul-hover: #7e1c2b; --azul-claro: #f7e3e6; --azul-oscuro: #5e1420; --azul-borde: #e6b8bf; --azul-sombra: rgba(155, 35, 53, 0.26); }
+:root[data-tema="morado"]  { --azul: #5b3a8c; --azul-hover: #4a2f73; --azul-claro: #ece5f6; --azul-oscuro: #35215a; --azul-borde: #cfc0e6; --azul-sombra: rgba(91, 58, 140, 0.28); }
+:root[data-tema="mostaza"] { --azul: #8a6100; --azul-hover: #704f00; --azul-claro: #f8eed3; --azul-oscuro: #4f3800; --azul-borde: #e6d09a; --azul-sombra: rgba(138, 97, 0, 0.28); }
+:root[data-tema="grafito"] { --azul: #374151; --azul-hover: #1f2937; --azul-claro: #e8eaee; --azul-oscuro: #1f2937; --azul-borde: #c7ccd4; --azul-sombra: rgba(55, 65, 81, 0.28); }
+
+.temas { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.tema {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px;
+  border: 1.5px solid var(--linea); border-radius: var(--radio-sm); background: var(--superficie); cursor: pointer; font-weight: 600; font-size: 0.88rem;
+}
+.tema[aria-checked="true"] { border-color: var(--tinta); box-shadow: inset 0 0 0 1px var(--tinta); }
+.tema .muestras { display: flex; gap: 3px; }
+.tema .muestras i { width: 18px; height: 18px; border-radius: 50%; display: block; }

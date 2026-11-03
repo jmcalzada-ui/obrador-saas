@@ -219,3 +219,10 @@ test("cada lote indica su conservación: un producto refrigerado guardado congel
     fecha: "2026-10-23", num_lote: "BAC-2", cantidad: 5, ingredientes: [{ origen: "manual", producto_id: harina.id, num_lote: "", cantidad: 1 }] });
   assert.equal(n.body.produccion.control_termico.estado, "pendiente");
 });
+
+test("colores de la app: el gestor elige un patrón y lo ve todo el equipo", async () => {
+  assert.equal((await O.api.get("/api/auth/me")).body.obrador.tema, "azul");
+  assert.equal((await O.api.patch("/api/obrador", { tema: "fucsia" })).status, 400);
+  assert.equal((await O.api.patch("/api/obrador", { tema: "verde" })).status, 200);
+  assert.equal((await O.api.get("/api/auth/me")).body.obrador.tema, "verde");
+});

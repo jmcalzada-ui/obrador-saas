@@ -4,6 +4,7 @@ import { useSesion, NOMBRE_ROL } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import { SubirLogo } from "../componentes/Logo.jsx";
 import Configuracion from "../componentes/Configuracion.jsx";
+import SelectorTema from "../componentes/Tema.jsx";
 
 export default function Mas() {
   const { usuario, puede, salir } = useSesion();
@@ -23,6 +24,7 @@ export default function Mas() {
         </div>
         <Configuracion />
         <SubirLogo />
+        <SelectorTema />
         <ul className="lista">
           {entradas.map(({ ruta, icono: Icono, texto, desc }) => (
             <li key={ruta}>

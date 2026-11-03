@@ -19,6 +19,7 @@ import Salidas from "./pantallas/Salidas.jsx";
 import SalidaFormulario from "./pantallas/SalidaFormulario.jsx";
 import SalidaDetalle from "./pantallas/SalidaDetalle.jsx";
 import { useLogo } from "./componentes/Logo.jsx";
+import { aplicarTema } from "./componentes/Tema.jsx";
 
 // Navegación por #ruta: funciona con el botón atrás del móvil y al recargar.
 function useRuta() {
@@ -72,6 +73,9 @@ export default function App() {
     const { usuario, obrador } = estado.datos;
     return { usuario, obrador, puede: (p) => usuario.permisos.includes(p), recargar: cargarSesion, salir };
   }, [estado.datos, cargarSesion, salir]);
+
+  // Colores del obrador en toda la app.
+  useEffect(() => { if (estado.datos?.obrador) aplicarTema(estado.datos.obrador.tema); }, [estado.datos?.obrador?.tema]);
 
   if (estado.cargando) return <Cargando />;
   if (!valor) return <Login onEntrar={cargarSesion} />;

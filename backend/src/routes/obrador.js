@@ -9,7 +9,7 @@ export const SECTORES = ["carnica", "panaderia", "pasteleria", "comidas_preparad
 export const obradorRouter = Router();
 
 const CAMPOS = `id, nombre, razon_social, cif, registro_sanitario, sector, num_empleados, direccion, direccion_fiscal, codigo_postal,
-  municipio, provincia, pais, contacto_nombre, email_contacto, email_facturacion, telefono, logo_id, modulo_salidas, impuesto_tipo, impuesto_pct, estado, creado_en`;
+  municipio, provincia, pais, contacto_nombre, email_contacto, email_facturacion, telefono, logo_id, modulo_salidas, impuesto_tipo, impuesto_pct, tema, estado, creado_en`;
 
 obradorRouter.get(
   "/",
@@ -51,6 +51,8 @@ const esquema = z.object({
   // Impuesto de venta que se pone en el Excel de pedidos para Holded.
   impuesto_tipo: z.enum(["IGIC", "IVA"]).optional(),
   impuesto_pct: z.number().min(0).max(30).nullable().optional(),
+  // Patrón de colores de la app (estética).
+  tema: z.enum(["azul", "verde", "granate", "morado", "mostaza", "grafito"]).optional(),
 });
 
 obradorRouter.patch(

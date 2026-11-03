@@ -6,6 +6,10 @@ import { Cargando } from "./componentes/ui.jsx";
 import "@fontsource-variable/instrument-sans/index.css";
 import "@fontsource-variable/source-serif-4/index.css";
 import "./estilos.css";
+import { aplicarTema, temaGuardado } from "./componentes/Tema.jsx";
+
+// Los colores del obrador de este dispositivo, ya desde la pantalla de acceso.
+if (temaGuardado() && !/^\/(admin|alta)/.test(window.location.pathname)) aplicarTema(temaGuardado());
 
 // Tres puertas de entrada en la misma web:
 //   /admin  → back office privado de la plataforma
