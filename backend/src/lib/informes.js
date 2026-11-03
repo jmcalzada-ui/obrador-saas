@@ -7,6 +7,7 @@ import pdfmake from "pdfmake";
 import { listarProduccion, evaluarTermico } from "../routes/preparados.js";
 import { config } from "../config.js";
 import { filtrosSalidas } from "../routes/salidas.js";
+import { marcaPie } from "./marca.js";
 
 const require = createRequire(import.meta.url);
 const dirFuentes = path.join(path.dirname(require.resolve("pdfmake/package.json")), "build", "fonts", "Roboto");
@@ -310,10 +311,11 @@ export async function generarPdf(datos, obrador, f, logo = null) {
       ],
     }),
     footer: (pagina, paginas) => ({
-      margin: [24, 8, 24, 0],
+      margin: [24, 4, 24, 0],
       columns: [
-        { text: `${datos.filas.length} registro(s)`, fontSize: 7, color: "#58625d" },
-        { text: `Página ${pagina} de ${paginas}`, alignment: "right", fontSize: 7, color: "#58625d" },
+        { width: "*", text: `${datos.filas.length} registro(s)`, fontSize: 7, color: "#58625d", margin: [0, 4, 0, 0] },
+        marcaPie(),
+        { width: "*", text: `Página ${pagina} de ${paginas}`, alignment: "right", fontSize: 7, color: "#58625d", margin: [0, 4, 0, 0] },
       ],
     }),
     content: datos.filas.length
@@ -341,7 +343,7 @@ export async function generarExcel(datos, obrador, f, logo = null) {
       margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
       printTitlesRow: "4:4", horizontalCentered: true,
     },
-    headerFooter: { oddFooter: `&L${obrador.nombre} · ${datos.titulo}&RPágina &P de &N` },
+    headerFooter: { oddFooter: `&L${obrador.nombre} · ${datos.titulo}&C&8&KB9C1BDObrador Control&RPágina &P de &N` },
     views: [{ state: "frozen", ySplit: 4 }],
   });
   const n = datos.columnas.length;

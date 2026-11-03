@@ -1,14 +1,13 @@
 import React from "react";
-import { Users, Store, UserRound, LogOut, ChevronRight } from "lucide-react";
+import { Users, Store, UserRound, LogOut, ChevronRight, Settings } from "lucide-react";
 import { useSesion, NOMBRE_ROL } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
-import { SubirLogo } from "../componentes/Logo.jsx";
-import Configuracion from "../componentes/Configuracion.jsx";
-import SelectorTema from "../componentes/Tema.jsx";
+import MarcaOC from "../componentes/MarcaOC.jsx";
 
 export default function Mas() {
   const { usuario, puede, salir } = useSesion();
   const entradas = [
+    puede("obrador") && { ruta: "/mas/configuracion", icono: Settings, texto: "Configuración", desc: "Logotipo, colores y apartados de la app" },
     puede("usuarios") && { ruta: "/mas/equipo", icono: Users, texto: "Equipo", desc: "Usuarios y plazas del plan" },
     { ruta: "/mas/obrador", icono: Store, texto: "Mi obrador", desc: puede("obrador") ? "Datos del obrador y plan" : "Datos del obrador" },
     { ruta: "/mas/cuenta", icono: UserRound, texto: "Mi cuenta", desc: "Contraseña" },
@@ -22,9 +21,6 @@ export default function Mas() {
           <strong>{usuario.nombre}</strong>
           <div className="suave">{NOMBRE_ROL[usuario.rol]} · {usuario.email}</div>
         </div>
-        <Configuracion />
-        <SubirLogo />
-        <SelectorTema />
         <ul className="lista">
           {entradas.map(({ ruta, icono: Icono, texto, desc }) => (
             <li key={ruta}>
@@ -40,6 +36,7 @@ export default function Mas() {
           ))}
         </ul>
         <button className="boton bloque" onClick={salir}><LogOut size={20} aria-hidden /> Cerrar sesión</button>
+        <MarcaOC className="pie" />
       </main>
     </>
   );

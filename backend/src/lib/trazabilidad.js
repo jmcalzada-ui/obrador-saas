@@ -4,6 +4,7 @@
 import pdfmake from "pdfmake";
 import { selectElaboracion, ingredientesDe, evaluarTermico, CONFIG_ELABORACION } from "../routes/preparados.js";
 import { generarDeclaracion } from "./declaracion.js";
+import { marcaPie } from "./marca.js";
 
 const fecha = (d) => {
   if (!d) return "";
@@ -240,10 +241,11 @@ export async function generarPdfLote(d, obrador, logo = null) {
       ],
     }),
     footer: (pagina, paginas) => ({
-      margin: [32, 10, 32, 0],
+      margin: [32, 4, 32, 0],
       columns: [
-        { text: `${obrador.nombre} · Trazabilidad del lote ${l.num_lote || ""}`, fontSize: 7, color: GRIS },
-        { text: `Página ${pagina} de ${paginas}`, alignment: "right", fontSize: 7, color: GRIS },
+        { width: "*", text: `${obrador.nombre} · Trazabilidad del lote ${l.num_lote || ""}`, fontSize: 7, color: GRIS, margin: [0, 4, 0, 0] },
+        marcaPie(),
+        { width: "*", text: `Página ${pagina} de ${paginas}`, alignment: "right", fontSize: 7, color: GRIS, margin: [0, 4, 0, 0] },
       ],
     }),
     content: contenido,

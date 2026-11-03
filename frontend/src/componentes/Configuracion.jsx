@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
 import { Aviso, useSesion, useToast } from "./ui.jsx";
+import Cabecera from "./Cabecera.jsx";
+import { SubirLogo } from "./Logo.jsx";
+import SelectorTema from "./Tema.jsx";
 
 /** Configuración del obrador (solo el gestor): qué apartados se usan. */
-export default function Configuracion() {
+export function ApartadosOpcionales() {
   const { puede, obrador, recargar } = useSesion();
   const toast = useToast();
   const [guardando, setGuardando] = useState(false);
@@ -32,7 +35,7 @@ export default function Configuracion() {
 
   return (
     <section className="panel pila">
-      <h2>Configuración</h2>
+      <h2>Apartados de la app</h2>
       <label className="casilla">
         <input type="checkbox" checked={Boolean(obrador.modulo_salidas)} disabled={guardando} onChange={(e) => cambiar(e.target.checked)} />
         <span>
@@ -60,5 +63,36 @@ export default function Configuracion() {
       )}
       {error && <Aviso tipo="error">{error}</Aviso>}
     </section>
+  );
+}
+
+/**
+ * Más → Configuración (solo el gestor):
+ *  · Apariencia: logotipo y colores.
+ *  · Apartados: qué partes opcionales de la app se usan (salidas a clientes…).
+ */
+export default function PantallaConfiguracion() {
+  const { puede } = useSesion();
+  return (
+    <>
+      <Cabecera titulo="Configuración" volver="/mas" />
+      <main className="contenido">
+        {!puede("obrador") ? <Aviso>Solo el gestor puede cambiar la configuración.</Aviso> : (
+          <>
+            <section className="seccion">
+              <h2 className="titulo-grupo">Apariencia</h2>
+              <p className="suave pequeno">Cómo se ve la app para todo el equipo.</p>
+            </section>
+            <SubirLogo />
+            <SelectorTema />
+            <section className="seccion" style={{ marginTop: 8 }}>
+              <h2 className="titulo-grupo">Funcionamiento</h2>
+              <p className="suave pequeno">Qué apartados opcionales usa tu obrador.</p>
+            </section>
+            <ApartadosOpcionales />
+          </>
+        )}
+      </main>
+    </>
   );
 }

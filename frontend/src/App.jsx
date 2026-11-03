@@ -15,11 +15,13 @@ import ProductoDetalle from "./pantallas/ProductoDetalle.jsx";
 import Mas from "./pantallas/Mas.jsx";
 import Equipo from "./pantallas/Equipo.jsx";
 import MiObrador from "./pantallas/MiObrador.jsx";
+import PantallaConfiguracion from "./componentes/Configuracion.jsx";
 import Salidas from "./pantallas/Salidas.jsx";
 import SalidaFormulario from "./pantallas/SalidaFormulario.jsx";
 import SalidaDetalle from "./pantallas/SalidaDetalle.jsx";
 import { useLogo } from "./componentes/Logo.jsx";
 import { aplicarTema } from "./componentes/Tema.jsx";
+import MarcaOC from "./componentes/MarcaOC.jsx";
 
 // Navegación por #ruta: funciona con el botón atrás del móvil y al recargar.
 function useRuta() {
@@ -126,6 +128,7 @@ function Shell() {
   else if (seccion === "mas" && a === "equipo") pantalla = <Equipo />;
   else if (seccion === "mas" && a === "obrador") pantalla = <MiObrador />;
   else if (seccion === "mas" && a === "cuenta") pantalla = <CambiarPassword />;
+  else if (seccion === "mas" && a === "configuracion") pantalla = <PantallaConfiguracion />;
   else if (seccion === "mas") pantalla = <Mas />;
   else pantalla = <Recepciones />;
 
@@ -145,6 +148,7 @@ function Shell() {
             <span className="largo">{largo || texto}</span>
           </button>
         ))}
+        <MarcaOC />
       </nav>
     </div>
   );
