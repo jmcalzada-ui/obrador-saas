@@ -556,3 +556,6 @@ table.tabla th, table.tabla td { padding: 8px 10px; }
 /* Unidades obtenidas: número + tipo (cajas, bandejas…) */
 .unidades-tipo { display: grid; grid-template-columns: 7em 1fr; gap: 8px; }
 .alta-rapida { background: var(--azul-claro); border-color: #bcd0ea; }
+
+/* Salidas: líneas de un pedido en la tabla */
+.lineas-salida { display: flex; flex-direction: column; gap: 2px; }

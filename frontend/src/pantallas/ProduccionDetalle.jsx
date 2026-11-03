@@ -14,7 +14,7 @@ const txt = (v) => (v == null ? "" : String(v).replace(".", ","));
 
 export default function ProduccionDetalle({ id, tipo = "final" }) {
   const cfg = ELABORACION[tipo];
-  const { puede } = useSesion();
+  const { puede, obrador } = useSesion();
   const toast = useToast();
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
@@ -35,7 +35,7 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
   }
   async function borrar() {
     try { await api.delete(`${cfg.api}/${id}`); toast("Lote eliminado"); window.location.hash = cfg.ruta; }
-    catch (e) { setHoja(null); setError(e.status === 409 ? "Este lote ya se ha usado como ingrediente: no se puede eliminar. Puedes darlo de baja." : e.message); }
+    catch (e) { setHoja(null); setError(e.status === 409 ? "Este lote ya se ha usado como ingrediente o ha salido a un cliente: no se puede eliminar. Puedes darlo de baja." : e.message); }
   }
 
   return (
@@ -131,6 +131,25 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
                 </ul>
               )}
             </section>}
+
+            {(obrador.modulo_salidas || datos.salidas?.length > 0) && (
+              <section className="seccion">
+                <h2>Salidas a clientes</h2>
+                {!datos.salidas?.length ? <p className="suave">Este lote todavía no ha salido a ningún cliente.</p> : (
+                  <ul className="lista">
+                    {datos.salidas.map((x) => (
+                      <li key={`${x.id}-${x.cantidad}`}>
+                        <button className="item" onClick={() => (window.location.hash = `/salidas/${x.id}`)}>
+                          <span className="principal"><strong>{x.cliente}</strong><span className="suave pequeno">Pedido {x.num_pedido} · {fecha(x.fecha)}</span></span>
+                          <span className="numero">{num(x.cantidad)} {x.unidad}</span>
+                          <ChevronRight size={18} aria-hidden className="suave" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
 
             <ListaIngredientes declaracion={datos.declaracion} puedeEditar={puede("editar")}
               guardar={async (texto) => { await api.patch(`${cfg.api}/${id}`, { declaracion_ingredientes: texto }); toast(texto == null ? "Lista automática" : "Lista de ingredientes guardada"); cargar(); }} />

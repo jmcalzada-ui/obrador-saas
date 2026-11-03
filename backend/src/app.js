@@ -7,6 +7,7 @@ import { authRouter } from "./routes/auth.js";
 import { usuariosRouter } from "./routes/usuarios.js";
 import { obradorRouter } from "./routes/obrador.js";
 import { catalogoRouter } from "./routes/catalogo.js";
+import { salidasRouter, clientesRouter } from "./routes/salidas.js";
 import { recepcionesRouter } from "./routes/recepciones.js";
 import { altaRouter } from "./routes/alta.js";
 import { produccionRouter, preparadosRouter, produccionesRouter, stockRouter } from "./routes/preparados.js";
@@ -38,6 +39,8 @@ export function crearApp() {
   app.use("/api/preparados", preparadosRouter);
   app.use("/api/producciones", produccionesRouter);
   app.use("/api/produccion", produccionRouter);
+  app.use("/api/salidas", salidasRouter);
+  app.use("/api/clientes", clientesRouter);
   app.use("/api/stock", stockRouter);
   app.use("/api/informes", informesRouter);
   app.use("/api/alta", altaRouter);

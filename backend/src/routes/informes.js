@@ -10,7 +10,7 @@ import { leerLogo } from "./obrador.js";
 export const informesRouter = Router();
 informesRouter.use(requireAuth, requirePermiso("ver"));
 
-const NOMBRE_ARCHIVO = { productos: "productos", entradas: "entradas", produccion: "produccion", intermedia: "produccion-interna", final: "produccion-final" };
+const NOMBRE_ARCHIVO = { salidas: "salidas", productos: "productos", entradas: "entradas", produccion: "produccion", intermedia: "produccion-interna", final: "produccion-final" };
 
 informesRouter.get(
   "/:seccion",
@@ -24,6 +24,7 @@ informesRouter.get(
       hasta: z.string().date().optional(),
       con_stock: z.enum(["1", "0"]).optional(),
       interna: z.enum(["1", "0"]).optional(),
+      cliente_id: z.string().uuid().optional(),
     }), req.query, res);
     if (!f) return;
     const { datos, obrador, logo } = await db(req, async (c) => ({

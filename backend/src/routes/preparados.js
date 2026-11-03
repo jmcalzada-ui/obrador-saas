@@ -158,6 +158,8 @@ async function moverLote(c, id, de, a) {
   const valores = cols.map((k) => (k === "estado" ? "completada" : l[k]));
   await c.query(`INSERT INTO ${a.tabla} (id, ${cols.join(", ")}) VALUES ($1, ${cols.map((_, i) => `$${i + 2}`).join(", ")})`, [id, ...valores]);
   await c.query(`UPDATE consumos SET ${a.fk} = $1, ${de.fk} = NULL WHERE ${de.fk} = $1`, [id]);
+  // Las salidas a clientes de este lote pasan a apuntar al lote en su nueva lista.
+  await c.query(`UPDATE salida_lineas SET ${a.fk} = $1, ${de.fk} = NULL WHERE ${de.fk} = $1`, [id]);
   await c.query(`DELETE FROM ${de.tabla} WHERE id = $1`, [id]);
   await c.query("UPDATE productos SET tipo = $2 WHERE id = $1", [l.producto_id, a.tipo]);
 }
@@ -229,7 +231,15 @@ function crearRouter(cfg) {
           ));
         }
         const auto = await generarDeclaracion(c, cfg.fk, req.params.id);
-        return { [cfg.singular]: conTermico(lote), ingredientes, usos, declaracion: { auto: auto.texto, ajustada: lote.declaracion_ingredientes } };
+        // Trazabilidad hacia delante: a qué clientes ha salido este lote (módulo de salidas).
+        const { rows: salidas } = await c.query(
+          `SELECT s.id, s.fecha, s.num_pedido, cl.nombre AS cliente, l.cantidad, l.unidad
+             FROM salida_lineas l JOIN salidas s ON s.id = l.salida_id JOIN clientes cl ON cl.id = s.cliente_id
+            WHERE l.${cfg.tabla === "producciones" ? "produccion_id" : "preparado_id"} = $1
+            ORDER BY s.fecha DESC, s.num_pedido`,
+          [req.params.id]
+        );
+        return { [cfg.singular]: conTermico(lote), ingredientes, usos, salidas, declaracion: { auto: auto.texto, ajustada: lote.declaracion_ingredientes } };
       });
       if (!datos) return res.status(404).json({ error: "Lote no encontrado." });
       res.json(datos);

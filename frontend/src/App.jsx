@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Truck, CookingPot, Package, Menu, CreditCard } from "lucide-react";
+import { Truck, CookingPot, Package, Menu, CreditCard, Send } from "lucide-react";
 import { api, sesion } from "./api.js";
 import { SesionContext, ProveedorToast, Cargando, Aviso, fecha } from "./componentes/ui.jsx";
 import Login from "./pantallas/Login.jsx";
@@ -15,6 +15,9 @@ import ProductoDetalle from "./pantallas/ProductoDetalle.jsx";
 import Mas from "./pantallas/Mas.jsx";
 import Equipo from "./pantallas/Equipo.jsx";
 import MiObrador from "./pantallas/MiObrador.jsx";
+import Salidas from "./pantallas/Salidas.jsx";
+import SalidaFormulario from "./pantallas/SalidaFormulario.jsx";
+import SalidaDetalle from "./pantallas/SalidaDetalle.jsx";
 import { useLogo } from "./componentes/Logo.jsx";
 
 // Navegación por #ruta: funciona con el botón atrás del móvil y al recargar.
@@ -34,6 +37,8 @@ const SECCIONES = [
   { id: "productos", texto: "Productos", icono: Package },
   { id: "entradas", texto: "Entradas", largo: "Entradas de mercancía", icono: Truck },
   { id: "produccion", texto: "Producción", icono: CookingPot },
+  // Solo si el gestor ha activado las salidas a clientes (Más → Configuración).
+  { id: "salidas", texto: "Salidas", largo: "Salidas a clientes", icono: Send, modulo: "salidas" },
   { id: "mas", texto: "Más", largo: "Equipo y cuenta", icono: Menu },
 ];
 
@@ -86,12 +91,13 @@ export default function App() {
 function Shell() {
   const { obrador } = React.useContext(SesionContext);
   const logo = useLogo();
+  const secciones = SECCIONES.filter((x) => !x.modulo || (x.modulo === "salidas" && obrador.modulo_salidas));
   const ruta = useRuta();
   const partes = ruta.split("/").filter(Boolean);
   // Enlaces antiguos (#/preparados, #/intermedia, #/final) → #/produccion
   const antiguo = { preparados: "i", intermedia: "i", final: "f" }[partes[0]];
   // Sin Inicio: la app se abre en Entradas (también desde enlaces antiguos a #/inicio).
-  const seccion = antiguo ? "produccion" : ["productos", "entradas", "produccion", "mas"].includes(partes[0]) ? partes[0] : "entradas";
+  const seccion = antiguo ? "produccion" : ["productos", "entradas", "produccion", "mas", ...(obrador.modulo_salidas ? ["salidas"] : [])].includes(partes[0]) ? partes[0] : "entradas";
   let [a, b] = [partes[1], partes[2]];
   if (antiguo && a && a !== "nuevo") [a, b] = [antiguo, a];
 
@@ -107,6 +113,11 @@ function Shell() {
     else if ((a === "i" || a === "f") && b) pantalla = <ProduccionDetalle key={`${a}-${b}`} id={b} tipo={a === "i" ? "intermedia" : "final"} />;
     else pantalla = <Produccion />;
   }
+  else if (seccion === "salidas") {
+    if (a === "nueva") pantalla = <SalidaFormulario key="nueva" />;
+    else if (a && b === "editar") pantalla = <SalidaFormulario key={`editar-${a}`} id={a} />;
+    else pantalla = a ? <SalidaDetalle key={a} id={a} /> : <Salidas />;
+  }
   else if (seccion === "productos") pantalla = a ? <ProductoDetalle id={a} /> : <Productos />;
   else if (seccion === "mas" && a === "equipo") pantalla = <Equipo />;
   else if (seccion === "mas" && a === "obrador") pantalla = <MiObrador />;
@@ -118,12 +129,12 @@ function Shell() {
     <div className="app">
       <AvisoImpago />
       {pantalla}
-      <nav className="nav" aria-label="Secciones" style={{ "--secciones": SECCIONES.length }}>
+      <nav className="nav" aria-label="Secciones" style={{ "--secciones": secciones.length }}>
         <div className={`nav-marca ${logo ? "con-logo" : ""}`} aria-hidden>
           {logo ? <img className="logo" src={logo} alt="" /> : <img src="/icono.svg" alt="" width="36" height="36" />}
           <span><strong>{logo ? obrador.nombre : "Registro de obrador"}</strong><small>{logo ? "Registro de obrador" : obrador.nombre}</small></span>
         </div>
-        {SECCIONES.map(({ id, texto, largo, icono: Icono }) => (
+        {secciones.map(({ id, texto, largo, icono: Icono }) => (
           <button key={id} aria-current={seccion === id ? "page" : undefined} onClick={() => (window.location.hash = `/${id}`)}>
             <Icono size={24} aria-hidden />
             <span className="corto">{texto}</span>

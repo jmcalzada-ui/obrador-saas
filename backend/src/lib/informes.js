@@ -6,6 +6,7 @@ import ExcelJS from "exceljs";
 import pdfmake from "pdfmake";
 import { listarProduccion, evaluarTermico } from "../routes/preparados.js";
 import { config } from "../config.js";
+import { filtrosSalidas } from "../routes/salidas.js";
 
 const require = createRequire(import.meta.url);
 const dirFuentes = path.join(path.dirname(require.resolve("pdfmake/package.json")), "build", "fonts", "Roboto");
@@ -176,7 +177,30 @@ async function produccion(c, f) {
   return { titulo, columnas, filas };
 }
 
+/** Salidas a clientes: una fila por línea (pedido · cliente · producto · lote · cantidad). */
+async function salidas(c, f) {
+  const { where, params } = filtrosSalidas(f);
+  const { rows } = await c.query(
+    `SELECT s.fecha, s.num_pedido, cl.nombre AS cliente, cl.cif, p.nombre AS producto, l.num_lote, l.cantidad, l.unidad, s.observaciones
+       FROM salidas s JOIN clientes cl ON cl.id = s.cliente_id
+       JOIN salida_lineas l ON l.salida_id = s.id JOIN productos p ON p.id = l.producto_id
+      ${where}
+      ORDER BY s.fecha DESC, s.num_pedido, l.orden`,
+    params
+  );
+  return {
+    titulo: "Salidas a clientes",
+    columnas: [
+      { titulo: "Fecha", ancho: 1.2 }, { titulo: "Nº pedido", ancho: 1.5 }, { titulo: "Cliente", ancho: 2.6 }, { titulo: "CIF", ancho: 1.2 },
+      { titulo: "Producto", ancho: 2.8 }, { titulo: "Lote", ancho: 1.6 }, { titulo: "Cantidad", ancho: 1, alinear: "right" },
+      { titulo: "Unidad", ancho: 1.1 }, { titulo: "Observaciones", ancho: 2.4 },
+    ],
+    filas: rows.map((r) => [fecha(r.fecha), r.num_pedido, r.cliente, r.cif || "", r.producto, r.num_lote || "", num(r.cantidad), r.unidad || "", r.observaciones || ""]),
+  };
+}
+
 export const SECCIONES = {
+  salidas,
   productos,
   entradas,
   produccion,
