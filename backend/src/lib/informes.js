@@ -199,6 +199,51 @@ async function salidas(c, f) {
   };
 }
 
+// ---------- Excel para importar en Holded (pedidos de venta) ----------
+// Mismas columnas y en el mismo orden que la plantilla "Importar pedidos de
+// venta" de Holded: una fila por línea; las filas de un mismo pedido llevan
+// el mismo "Num Pedido". El contacto se enlaza en Holded por el NIF y el
+// producto por el SKU. El lote va en la descripción de cada línea.
+const CABECERA_HOLDED = (impuesto) => [
+  "Num Pedido", "Formato de numeración", "Fecha dd/mm/yyyy", "Fecha de vencimiento dd/mm/yyyy", "Descripción",
+  "Nombre del contacto", "NIF", "Dirección", "Población", "Código postal", "Provincia", "País", "Concepto",
+  "Descripción del producto", "SKU", "Precio unidad", "Unidades", "Descuento %", `${impuesto} %`, "Retención %",
+  "Rec. de eq. %", "Operación", "Forma de pago (ID)", "Tags separados por -", "Nombre canal de venta",
+  "Cuenta canal de venta", "Moneda", "Cambio de moneda", "Almacén",
+];
+
+export async function generarHolded(c, f) {
+  const { where, params } = filtrosSalidas(f);
+  const { rows: [ob] } = await c.query("SELECT impuesto_tipo, impuesto_pct FROM obradores");
+  const { rows } = await c.query(
+    `SELECT s.num_pedido, s.fecha, s.observaciones, cl.nombre AS cliente, cl.cif, cl.direccion, cl.poblacion, cl.codigo_postal,
+            cl.provincia, cl.pais, p.nombre AS producto, p.sku, COALESCE(l.precio, p.precio_venta) AS precio,
+            l.num_lote, l.cantidad, l.unidad
+       FROM salidas s JOIN clientes cl ON cl.id = s.cliente_id
+       JOIN salida_lineas l ON l.salida_id = s.id JOIN productos p ON p.id = l.producto_id
+      ${where}
+      ORDER BY s.fecha, s.num_pedido, l.orden`,
+    params
+  );
+  const libro = new ExcelJS.Workbook();
+  const hoja = libro.addWorksheet("Holded");
+  hoja.addRow(CABECERA_HOLDED(ob.impuesto_tipo || "IGIC"));
+  hoja.getRow(1).font = { bold: true };
+  for (const r of rows) {
+    const descripcion = [r.num_lote && `Lote ${r.num_lote}`, r.unidad && `${num(r.cantidad)} ${r.unidad}`].filter(Boolean).join(" · ");
+    hoja.addRow([
+      r.num_pedido, "", fecha(r.fecha), fecha(r.fecha), r.observaciones || "",
+      r.cliente, r.cif || "", r.direccion || "", r.poblacion || "", r.codigo_postal || "", r.provincia || "", r.pais || "España",
+      r.producto, descripcion, r.sku || "",
+      r.precio != null ? Number(r.precio) : null, Number(r.cantidad), 0,
+      ob.impuesto_pct != null ? Number(ob.impuesto_pct) : null, 0, 0,
+      "general", "", "", "", "", "eur", "1", "",
+    ]);
+  }
+  hoja.columns.forEach((col, i) => { col.width = [12, 12, 14, 14, 24, 28, 14, 28, 16, 10, 16, 10, 28, 30, 14][i] || 12; });
+  return { buffer: Buffer.from(await libro.xlsx.writeBuffer()), filas: rows.length };
+}
+
 export const SECCIONES = {
   salidas,
   productos,

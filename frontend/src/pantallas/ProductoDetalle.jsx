@@ -46,6 +46,8 @@ export default function ProductoDetalle({ id }) {
               <dt>Unidad</dt><dd>{producto.unidad_medida}</dd>
               <dt>Conservación</dt><dd>{CONSERVACION[producto.conservacion] || "—"}</dd>
               {producto.categoria && <><dt>Categoría</dt><dd>{producto.categoria}</dd></>}
+              {producto.sku && <><dt>SKU (Holded)</dt><dd>{producto.sku}</dd></>}
+              {producto.precio_venta != null && <><dt>Precio de venta</dt><dd>{euros(producto.precio_venta)} / {producto.unidad_medida}</dd></>}
               {producto.proveedores?.length > 0 && <><dt>Proveedores</dt><dd>{producto.proveedores.map((x) => x.nombre).join(", ")}</dd></>}
               {producto.ultimo_precio != null && <><dt>Último precio</dt><dd>{euros(producto.ultimo_precio)} / {producto.unidad_medida}</dd></>}
               {esPreparado && (
@@ -192,7 +194,7 @@ function EditarMarca({ productoId, unidad, m, onCerrar, onGuardado }) {
 
 /** Editar todo el producto: datos generales, nombre de sus marcas y de los proveedores que lo traen. */
 function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
-  const { puede } = useSesion();
+  const { puede, obrador } = useSesion();
   const preparado = p.tipo === "preparado" || p.tipo === "elaborado";
   const t = (v) => (v == null ? "" : String(v).replace(".", ","));
   const [f, setF] = useState({
@@ -201,6 +203,7 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
     abatimiento_temp_max: t(p.abatimiento_temp_max ?? 10), abatimiento_minutos_max: t(p.abatimiento_minutos_max ?? 120),
     vida_util_dias: t(p.vida_util_dias), activo: p.activo,
     congelacion_temp_max: t(p.congelacion_temp_max ?? -18), congelacion_minutos_max: t(p.congelacion_minutos_max ?? 240),
+    sku: p.sku || "", precio_venta: t(p.precio_venta),
   });
   const [marcas, setMarcas] = useState(() => (p.marcas || []).map((m) => ({ id: m.id, nombre: m.nombre, original: m.nombre })));
   const [proveedores, setProveedores] = useState(() => (p.proveedores || []).map((x) => ({ id: x.id, nombre: x.nombre, original: x.nombre })));
@@ -210,6 +213,11 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
 
   async function guardar(confirmar = false) {
     const cuerpo = { nombre: f.nombre.trim(), unidad_medida: f.unidad_medida, categoria: f.categoria.trim() || null, activo: f.activo, conservacion: f.conservacion };
+    if (obrador.modulo_salidas) {
+      cuerpo.sku = f.sku.trim() || null;
+      cuerpo.precio_venta = aNumero(f.precio_venta);
+      if (Number.isNaN(cuerpo.precio_venta)) return setError("El precio de venta no es un número.");
+    }
     if (preparado) {
       cuerpo.proceso_termico = f.proceso_termico;
       cuerpo.vida_util_dias = aNumero(f.vida_util_dias);
@@ -293,6 +301,16 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
             <input id="p-vida" className="entrada" inputMode="numeric" value={f.vida_util_dias} onChange={(e) => setF({ ...f, vida_util_dias: e.target.value })} />
           </Campo>
         </>
+      )}
+      {obrador.modulo_salidas && (
+        <div className="dos-columnas">
+          <Campo etiqueta="Código / SKU en Holded" id="p-sku" ayuda="Para enlazar el producto al importar pedidos.">
+            <input id="p-sku" className="entrada" value={f.sku} onChange={(e) => setF({ ...f, sku: e.target.value })} />
+          </Campo>
+          <Campo etiqueta="Precio de venta (€/ud)" id="p-pv" ayuda="Sin impuestos. Opcional.">
+            <input id="p-pv" className="entrada" inputMode="decimal" value={f.precio_venta} onChange={(e) => setF({ ...f, precio_venta: e.target.value })} />
+          </Campo>
+        </div>
       )}
       <Campo etiqueta="Categoría" id="p-cat"><input id="p-cat" className="entrada" value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value })} /></Campo>
 

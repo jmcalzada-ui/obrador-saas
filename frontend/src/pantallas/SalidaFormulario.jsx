@@ -5,9 +5,10 @@ import { Aviso, Campo, Cargando, useToast, hoyISO, aNumero, fecha, num } from ".
 import Autocompletar, { normal } from "../componentes/Autocompletar.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import { TIPOS_UNIDAD } from "./NuevaProduccion.jsx";
+import { EditarCliente } from "./Salidas.jsx";
 
 let siguienteK = 1;
-const lineaVacia = () => ({ k: siguienteK++, producto: null, texto: "", lote: null, num_lote: "", cantidad: "", unidad: "" });
+const lineaVacia = () => ({ k: siguienteK++, producto: null, texto: "", lote: null, num_lote: "", cantidad: "", unidad: "", precio: "" });
 const txt = (v) => (v == null ? "" : String(v).replace(".", ","));
 
 /**
@@ -53,6 +54,7 @@ export default function SalidaFormulario({ id }) {
           num_lote: li.num_lote || "",
           cantidad: txt(li.cantidad),
           unidad: li.unidad || "",
+          precio: txt(li.precio),
         })));
       } else {
         cambiar({ num_pedido: x.num_pedido });
@@ -70,23 +72,26 @@ export default function SalidaFormulario({ id }) {
     }
   }
 
-  async function crearCliente(nombre) {
-    setError("");
-    try {
-      const { cliente } = await api.post("/clientes", { nombre });
-      setClientes((l) => [...l, { ...cliente, salidas: 0 }]);
-      cambiar({ cliente, textoCliente: cliente.nombre });
-    } catch (e) { setError(e.message); }
+  // Clientes nuevos (o sin NIF): se abre su ficha, porque la razón social y el NIF son obligatorios.
+  const [fichaCliente, setFichaCliente] = useState(null);
+  function clienteGuardado(cliente) {
+    setFichaCliente(null);
+    if (!cliente) return;
+    setClientes((l) => [...l.filter((x) => x.id !== cliente.id), { salidas: 0, ...cliente }]);
+    cambiar({ cliente, textoCliente: cliente.nombre });
   }
+
 
   function validar() {
     if (!f.num_pedido.trim()) return "Indica el nº de pedido.";
     if (!f.cliente) return f.textoCliente.trim() ? `«${f.textoCliente.trim()}» no está en tus clientes: elígelo de la lista o pulsa «Añadir…».` : "Elige el cliente.";
+    if (!f.cliente.cif) return `Falta el NIF de «${f.cliente.nombre}»: complétalo para poder guardar la salida.`;
     const sinElegir = lineas.find((l) => !l.producto && l.texto.trim());
     if (sinElegir) return `«${sinElegir.texto.trim()}» no está en tus productos: elígelo de la lista.`;
     const validas = lineas.filter((l) => l.producto);
     if (!validas.length) return "Añade al menos un producto.";
     for (const l of validas) {
+      if (Number.isNaN(aNumero(l.precio)) || aNumero(l.precio) < 0) return `El precio de ${l.producto.nombre} no es válido.`;
       if (!l.lote && !l.num_lote.trim()) return `Elige o escribe el lote de ${l.producto.nombre}.`;
       if (!(aNumero(l.cantidad) > 0)) return `Indica la cantidad de ${l.producto.nombre}.`;
     }
@@ -101,8 +106,8 @@ export default function SalidaFormulario({ id }) {
     const cuerpo = {
       num_pedido: f.num_pedido.trim(), fecha: f.fecha, cliente_id: f.cliente.id, observaciones: f.observaciones.trim(),
       lineas: lineas.filter((l) => l.producto).map((l) => (l.lote
-        ? { producto_id: l.producto.id, origen: l.lote.origen, lote_id: l.lote.id, cantidad: aNumero(l.cantidad), unidad: l.unidad.trim() }
-        : { producto_id: l.producto.id, origen: "manual", num_lote: l.num_lote.trim(), cantidad: aNumero(l.cantidad), unidad: l.unidad.trim() })),
+        ? { producto_id: l.producto.id, origen: l.lote.origen, lote_id: l.lote.id, cantidad: aNumero(l.cantidad), unidad: l.unidad.trim(), precio: aNumero(l.precio) }
+        : { producto_id: l.producto.id, origen: "manual", num_lote: l.num_lote.trim(), cantidad: aNumero(l.cantidad), unidad: l.unidad.trim(), precio: aNumero(l.precio) })),
     };
     try {
       const { salida } = editar ? await api.patch(`/salidas/${id}`, cuerpo) : await api.post("/salidas", cuerpo);
@@ -153,11 +158,19 @@ export default function SalidaFormulario({ id }) {
           }}
           opciones={clientes.filter((c) => c.activo || c.id === f.cliente?.id).map((c) => ({ id: c.id, texto: c.nombre, detalle: [c.cif, c.direccion].filter(Boolean).join(" · ") || undefined, c }))}
           onElegir={(o) => cambiar({ cliente: o.c, textoCliente: o.texto })}
-          onCrear={crearCliente}
+          onCrear={(nombre) => setFichaCliente({ nombre })}
           textoCrear={(t) => `Añadir el cliente «${t}»`}
           placeholder="Escribe el cliente"
           mostrarTodasVacio
         />
+
+        {f.cliente && !f.cliente.cif && (
+          <Aviso>
+            <span>Falta el NIF de este cliente (es obligatorio para enlazarlo con Holded).{" "}
+              <button type="button" className="enlace" onClick={() => setFichaCliente(f.cliente)}>Completar sus datos</button></span>
+          </Aviso>
+        )}
+        {f.cliente?.cif && <p className="suave pequeno" style={{ marginTop: -8 }}>NIF {f.cliente.cif}{f.cliente.poblacion ? ` · ${f.cliente.poblacion}` : ""}</p>}
 
         <section className="seccion">
           <h2>Productos y lotes</h2>
@@ -174,6 +187,7 @@ export default function SalidaFormulario({ id }) {
         </Campo>
         {error && <Aviso tipo="error">{error}</Aviso>}
       </main>
+      {fichaCliente && <EditarCliente c={fichaCliente} onCerrar={() => setFichaCliente(null)} onHecho={(_, cliente) => clienteGuardado(cliente)} />}
       <div className="accion-fija">
         <button className="boton principal grande" onClick={guardar} disabled={guardando}>
           <Check size={22} aria-hidden /> {guardando ? "Guardando…" : editar ? "Guardar cambios" : "Guardar salida"}
@@ -199,7 +213,8 @@ function LineaSalida({ n, l, productos, lotes, cambiar, quitar, puedeQuitar }) {
 
   function elegirProducto(p) {
     // El lote no se rellena solo: se elige del desplegable (últimos 3) o se escribe.
-    cambiar({ producto: p, texto: p.nombre, lote: null, num_lote: "", unidad: l.unidad || unidadPorDefecto(p, null) });
+    cambiar({ producto: p, texto: p.nombre, lote: null, num_lote: "", unidad: l.unidad || unidadPorDefecto(p, null),
+      precio: l.precio || (p.precio_venta != null ? txt(p.precio_venta) : "") });
   }
 
   return (
@@ -236,9 +251,13 @@ function LineaSalida({ n, l, productos, lotes, cambiar, quitar, puedeQuitar }) {
           {l.lote && l.lote.fecha && (
             <span className="suave pequeno fila" style={{ gap: 6 }}><CornerDownRight size={16} aria-hidden /> Lote del {fecha(l.lote.fecha)}</span>
           )}
-          <div className="unidades-tipo">
-            <input className="entrada" inputMode="decimal" aria-label={`Cantidad de ${l.producto.nombre}`} placeholder="Cantidad" value={l.cantidad} onChange={(e) => cambiar({ cantidad: e.target.value })} />
-            <input className="entrada" list="tipos-unidad-salida" aria-label="Unidad" placeholder="kg, cajas, bandejas…" value={l.unidad} onChange={(e) => cambiar({ unidad: e.target.value })} />
+          <div className="linea-cantidades">
+            <label><span>Cantidad</span>
+              <input className="entrada" inputMode="decimal" aria-label={`Cantidad de ${l.producto.nombre}`} value={l.cantidad} onChange={(e) => cambiar({ cantidad: e.target.value })} /></label>
+            <label><span>Unidad</span>
+              <input className="entrada" list="tipos-unidad-salida" aria-label="Unidad" placeholder="kg, cajas…" value={l.unidad} onChange={(e) => cambiar({ unidad: e.target.value })} /></label>
+            <label><span>Precio €/ud (opcional)</span>
+              <input className="entrada" inputMode="decimal" aria-label={`Precio de ${l.producto.nombre}`} placeholder="sin impuestos" value={l.precio} onChange={(e) => cambiar({ precio: e.target.value })} /></label>
           </div>
           <datalist id="tipos-unidad-salida">{["kg", "g", "l", ...TIPOS_UNIDAD].map((t) => <option key={t} value={t} />)}</datalist>
         </>

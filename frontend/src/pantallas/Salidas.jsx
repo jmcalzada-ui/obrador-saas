@@ -17,6 +17,7 @@ const COLUMNAS = [
   { titulo: "Fecha", celda: (s) => fecha(s.fecha), orden: (s) => s.fecha, ancho: 110 },
   { titulo: "Nº pedido", celda: (s) => <span className="lote-tabla">{s.num_pedido}</span>, orden: (s) => s.num_pedido },
   { titulo: "Cliente", ajustar: true, celda: (s) => <strong>{s.cliente}</strong>, orden: (s) => s.cliente },
+  { titulo: "NIF", celda: (s) => s.cliente_nif || "—", orden: (s) => s.cliente_nif || "" },
   {
     titulo: "Productos y lotes", ajustar: true,
     celda: (s) => <span className="lineas-salida">{s.lineas.map((l) => <span key={l.id}>{textoLinea(l)}</span>)}</span>,
@@ -62,7 +63,8 @@ function ListaSalidas({ vista, setVista }) {
       <Cabecera titulo="Salidas a clientes" />
       <main className="contenido ancho">
         <Pestanas vista={vista} setVista={setVista} />
-        <Filtros f={f} setF={setF} placeholder="Producto, lote, cliente o nº de pedido" informe="salidas" etiquetaFechas="Salida" />
+        <Filtros f={f} setF={setF} placeholder="Producto, lote, cliente o nº de pedido" informe="salidas" etiquetaFechas="Salida" holded />
+        <p className="suave pequeno" style={{ marginTop: -6 }}>«Excel para Holded» descarga los pedidos que estás viendo con el formato de importación de pedidos de venta de Holded.</p>
         {error && <Aviso tipo="error">{error}</Aviso>}
         {!lista && !error && <Cargando />}
         {lista && lista.length === 0 && (
@@ -120,9 +122,9 @@ function Clientes({ vista, setVista }) {
   }, [lista, q]);
   const columnas = [
     { titulo: "Cliente", ajustar: true, celda: (c) => <strong>{c.nombre}</strong>, orden: (c) => c.nombre },
-    { titulo: "CIF / NIF", celda: (c) => c.cif || "—", orden: (c) => c.cif || "" },
+    { titulo: "NIF", celda: (c) => c.cif || <span className="distintivo rojo">Falta NIF</span>, orden: (c) => c.cif || "" },
+    { titulo: "Población", ajustar: true, celda: (c) => [c.poblacion, c.provincia].filter(Boolean).join(", ") || "—", orden: (c) => c.poblacion || "" },
     { titulo: "Contacto", ajustar: true, celda: (c) => c.contacto || "—", orden: (c) => c.contacto || "" },
-    { titulo: "Dirección", ajustar: true, celda: (c) => c.direccion || "—", orden: (c) => c.direccion || "" },
     { titulo: "Salidas", num: true, celda: (c) => c.salidas, orden: (c) => c.salidas },
     { titulo: "Estado", celda: (c) => (c.activo ? <span className="distintivo verde">Activo</span> : <span className="distintivo">De baja</span>), orden: (c) => c.activo },
   ];
@@ -146,7 +148,7 @@ function Clientes({ vista, setVista }) {
             {ordenar(filtrados, columnas, orden).map((c) => (
               <li key={c.id}>
                 <button className="item" onClick={() => abrir(c)}>
-                  <span className="principal"><strong>{c.nombre}</strong><span className="suave pequeno">{[c.cif, c.contacto].filter(Boolean).join(" · ") || "Sin CIF ni contacto"} · {c.salidas} {c.salidas === 1 ? "salida" : "salidas"}</span></span>
+                  <span className="principal"><strong>{c.nombre}</strong><span className="suave pequeno">{c.cif || "Falta NIF"}{c.poblacion ? ` · ${c.poblacion}` : ""} · {c.salidas} {c.salidas === 1 ? "salida" : "salidas"}</span></span>
                   {!c.activo && <span className="distintivo">De baja</span>}
                   {puede("editar") && <Pencil size={18} aria-hidden className="suave" />}
                 </button>
@@ -165,14 +167,24 @@ function Clientes({ vista, setVista }) {
   );
 }
 
+/** Ficha de cliente: razón social y NIF obligatorios (con el NIF se enlaza el contacto en Holded). */
 export function EditarCliente({ c, onCerrar, onHecho }) {
   const { puede } = useSesion();
   const nuevo = !c.id;
-  const [f, setF] = useState({ nombre: c.nombre || "", cif: c.cif || "", contacto: c.contacto || "", direccion: c.direccion || "", activo: c.activo ?? true });
+  const [f, setF] = useState({
+    nombre: c.nombre || "", cif: c.cif || "", contacto: c.contacto || "", direccion: c.direccion || "", poblacion: c.poblacion || "",
+    codigo_postal: c.codigo_postal || "", provincia: c.provincia || "", pais: c.pais || "España", activo: c.activo ?? true,
+  });
   const [error, setError] = useState("");
+  const cambiar = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const limpio = (v) => v.trim() || null;
   async function guardar() {
     setError("");
-    const cuerpo = { nombre: f.nombre.trim(), cif: f.cif.trim() || null, contacto: f.contacto.trim() || null, direccion: f.direccion.trim() || null };
+    if (!f.nombre.trim() || !f.cif.trim()) return setError("La razón social y el NIF son obligatorios.");
+    const cuerpo = {
+      nombre: f.nombre.trim(), cif: f.cif.trim(), contacto: limpio(f.contacto), direccion: limpio(f.direccion), poblacion: limpio(f.poblacion),
+      codigo_postal: limpio(f.codigo_postal), provincia: limpio(f.provincia), pais: f.pais.trim() || "España",
+    };
     try {
       const r = nuevo ? await api.post("/clientes", cuerpo) : await api.patch(`/clientes/${c.id}`, { ...cuerpo, activo: f.activo });
       onHecho(nuevo ? "Cliente añadido" : "Cliente guardado", r.cliente);
@@ -183,15 +195,27 @@ export function EditarCliente({ c, onCerrar, onHecho }) {
   }
   return (
     <Hoja titulo={nuevo ? "Añadir cliente" : "Editar cliente"} onCerrar={onCerrar}>
-      <Campo etiqueta="Nombre o razón social" id="cl-nombre"><input id="cl-nombre" className="entrada" autoFocus value={f.nombre} onChange={(e) => setF({ ...f, nombre: e.target.value })} /></Campo>
-      <Campo etiqueta="CIF / NIF" id="cl-cif"><input id="cl-cif" className="entrada" value={f.cif} onChange={(e) => setF({ ...f, cif: e.target.value })} /></Campo>
-      <Campo etiqueta="Contacto" id="cl-con" ayuda="Teléfono, email o persona de contacto.">
-        <input id="cl-con" className="entrada" value={f.contacto} onChange={(e) => setF({ ...f, contacto: e.target.value })} />
+      <Campo etiqueta="Razón social *" id="cl-nombre" ayuda="Tal como figura en sus facturas (p. ej. Restaurante El Puerto S.L.).">
+        <input id="cl-nombre" className="entrada" autoFocus={!c.nombre} value={f.nombre} onChange={cambiar("nombre")} />
       </Campo>
-      <Campo etiqueta="Dirección de entrega" id="cl-dir"><input id="cl-dir" className="entrada" value={f.direccion} onChange={(e) => setF({ ...f, direccion: e.target.value })} /></Campo>
+      <Campo etiqueta="NIF / CIF *" id="cl-cif" ayuda="Con el NIF se enlaza el cliente al importar los pedidos en Holded.">
+        <input id="cl-cif" className="entrada" autoFocus={Boolean(c.nombre) && !c.cif} autoCapitalize="characters" value={f.cif} onChange={cambiar("cif")} />
+      </Campo>
+      <Campo etiqueta="Dirección" id="cl-dir"><input id="cl-dir" className="entrada" value={f.direccion} onChange={cambiar("direccion")} /></Campo>
+      <div className="dos-columnas">
+        <Campo etiqueta="Población" id="cl-pob"><input id="cl-pob" className="entrada" value={f.poblacion} onChange={cambiar("poblacion")} /></Campo>
+        <Campo etiqueta="Código postal" id="cl-cp"><input id="cl-cp" className="entrada" inputMode="numeric" value={f.codigo_postal} onChange={cambiar("codigo_postal")} /></Campo>
+      </div>
+      <div className="dos-columnas">
+        <Campo etiqueta="Provincia" id="cl-prov"><input id="cl-prov" className="entrada" value={f.provincia} onChange={cambiar("provincia")} /></Campo>
+        <Campo etiqueta="País" id="cl-pais"><input id="cl-pais" className="entrada" value={f.pais} onChange={cambiar("pais")} /></Campo>
+      </div>
+      <Campo etiqueta="Contacto" id="cl-con" ayuda="Teléfono, email o persona de contacto.">
+        <input id="cl-con" className="entrada" value={f.contacto} onChange={cambiar("contacto")} />
+      </Campo>
       {!nuevo && <Opciones etiqueta="Estado" valor={f.activo} onCambio={(v) => setF({ ...f, activo: v })} opciones={[{ valor: true, texto: "Activo" }, { valor: false, texto: "De baja" }]} />}
       {error && <Aviso tipo="error">{error}</Aviso>}
-      <button className="boton principal grande bloque" onClick={guardar} disabled={!f.nombre.trim()}>Guardar</button>
+      <button className="boton principal grande bloque" onClick={guardar} disabled={!f.nombre.trim() || !f.cif.trim()}>Guardar</button>
       {!nuevo && puede("borrar") && <button className="boton peligro bloque" onClick={borrar}><Trash2 size={18} aria-hidden /> Eliminar cliente</button>}
     </Hoja>
   );

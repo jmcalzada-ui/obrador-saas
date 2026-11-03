@@ -559,3 +559,7 @@ table.tabla th, table.tabla td { padding: 8px 10px; }
 
 /* Salidas: líneas de un pedido en la tabla */
 .lineas-salida { display: flex; flex-direction: column; gap: 2px; }
+.linea-cantidades { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; }
+.linea-cantidades label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.linea-cantidades label span { font-size: 0.8rem; font-weight: 600; color: var(--tinta-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+button.enlace { border: 0; background: none; padding: 0; color: var(--azul); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }

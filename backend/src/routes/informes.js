@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, requirePermiso, db } from "../auth/middleware.js";
 import { ruta, validar } from "../lib/utiles.js";
-import { SECCIONES, generarExcel, generarPdf } from "../lib/informes.js";
+import { SECCIONES, generarExcel, generarPdf, generarHolded } from "../lib/informes.js";
 import { leerLogo } from "./obrador.js";
 
 export const informesRouter = Router();
@@ -18,15 +18,25 @@ informesRouter.get(
     const constructor = SECCIONES[req.params.seccion];
     if (!constructor) return res.status(404).json({ error: "Informe no encontrado." });
     const f = validar(z.object({
-      formato: z.enum(["pdf", "xlsx"]).default("pdf"),
+      formato: z.enum(["pdf", "xlsx", "holded"]).default("pdf"),
       q: z.string().trim().max(80).optional(),
       desde: z.string().date().optional(),
       hasta: z.string().date().optional(),
       con_stock: z.enum(["1", "0"]).optional(),
       interna: z.enum(["1", "0"]).optional(),
       cliente_id: z.string().uuid().optional(),
+      salida_id: z.string().uuid().optional(),
     }), req.query, res);
     if (!f) return;
+    if (f.formato === "holded") {
+      // Solo las salidas se exportan a Holded (como pedidos de venta).
+      if (req.params.seccion !== "salidas") return res.status(400).json({ error: "Solo las salidas se pueden exportar a Holded." });
+      const { buffer } = await db(req, (c) => generarHolded(c, f));
+      const sufijo = [f.desde, f.hasta].filter(Boolean).join("_") || new Date().toISOString().slice(0, 10);
+      res.set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.set("Content-Disposition", `attachment; filename="pedidos-holded_${sufijo}.xlsx"`);
+      return res.send(buffer);
+    }
     const { datos, obrador, logo } = await db(req, async (c) => ({
       logo: await leerLogo(c),
       datos: await constructor(c, f),

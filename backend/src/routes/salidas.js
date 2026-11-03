@@ -22,7 +22,7 @@ for (const r of [salidasRouter, clientesRouter]) r.use(requireAuth, moduloActivo
 const fallo = (msg, status) => Object.assign(new Error(msg), { status });
 
 // ---------- Clientes ----------
-const CAMPOS_CLIENTE = "id, nombre, cif, contacto, direccion, activo";
+const CAMPOS_CLIENTE = "id, nombre, cif, contacto, direccion, poblacion, codigo_postal, provincia, pais, activo";
 clientesRouter.get(
   "/",
   ruta(async (req, res) => {
@@ -33,11 +33,19 @@ clientesRouter.get(
     res.json({ clientes });
   })
 );
+// NIF/CIF: sin espacios, guiones ni puntos y en mayúsculas (así se compara con Holded).
+const nif = z.string().transform((v) => v.replace(/[\s.\-]/g, "").toUpperCase())
+  .pipe(z.string().regex(/^[A-Z0-9]{8,14}$/, "El NIF no es válido (letras y números, sin espacios)."));
+const texto = (max) => z.string().trim().max(max).nullable().optional();
 const esquemaCliente = z.object({
-  nombre: z.string().trim().min(1, "Escribe el nombre del cliente.").max(160),
-  cif: z.string().trim().max(20).nullable().optional(),
-  contacto: z.string().trim().max(240).nullable().optional(),
-  direccion: z.string().trim().max(240).nullable().optional(),
+  nombre: z.string().trim().min(1, "Escribe la razón social del cliente.").max(160),
+  cif: nif,
+  contacto: texto(240),
+  direccion: texto(240),
+  poblacion: texto(80),
+  codigo_postal: texto(10),
+  provincia: texto(80),
+  pais: z.string().trim().min(1).max(60).optional(),
   activo: z.boolean().optional(),
 });
 clientesRouter.post(
@@ -48,12 +56,14 @@ clientesRouter.post(
     if (!d) return;
     try {
       const cliente = await db(req, async (c) => (await c.query(
-        `INSERT INTO clientes (obrador_id, nombre, cif, contacto, direccion) VALUES ($1,$2,$3,$4,$5) RETURNING ${CAMPOS_CLIENTE}`,
-        [req.usuario.obrador_id, d.nombre, d.cif ?? null, d.contacto ?? null, d.direccion ?? null]
+        `INSERT INTO clientes (obrador_id, nombre, cif, contacto, direccion, poblacion, codigo_postal, provincia, pais)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING ${CAMPOS_CLIENTE}`,
+        [req.usuario.obrador_id, d.nombre, d.cif, d.contacto ?? null, d.direccion ?? null, d.poblacion ?? null, d.codigo_postal ?? null,
+         d.provincia ?? null, d.pais || "España"]
       )).rows[0]);
       res.status(201).json({ cliente });
     } catch (e) {
-      if (e.code === "23505") return res.status(409).json({ error: "Ya hay un cliente con ese nombre." });
+      if (e.code === "23505") return res.status(409).json({ error: e.constraint === "clientes_nif_unico" ? "Ya hay un cliente con ese NIF." : "Ya hay un cliente con ese nombre." });
       throw e;
     }
   })
@@ -74,7 +84,7 @@ clientesRouter.patch(
       if (!cliente) return res.status(404).json({ error: "Cliente no encontrado." });
       res.json({ cliente });
     } catch (e) {
-      if (e.code === "23505") return res.status(409).json({ error: "Ya hay otro cliente con ese nombre." });
+      if (e.code === "23505") return res.status(409).json({ error: e.constraint === "clientes_nif_unico" ? "Ya hay otro cliente con ese NIF." : "Ya hay otro cliente con ese nombre." });
       throw e;
     }
   })
@@ -96,12 +106,12 @@ clientesRouter.delete(
 
 // ---------- Salidas (pedidos) ----------
 export const SELECT_SALIDA = `
-  SELECT s.id, s.fecha, s.num_pedido, s.cliente_id, cl.nombre AS cliente, s.observaciones, s.creado_en, s.modificado_en,
+  SELECT s.id, s.fecha, s.num_pedido, s.cliente_id, cl.nombre AS cliente, cl.cif AS cliente_nif, s.observaciones, s.creado_en, s.modificado_en,
          uc.nombre AS creado_por_nombre, um.nombre AS modificado_por_nombre,
          COALESCE((
            SELECT json_agg(json_build_object(
                     'id', l.id, 'producto_id', l.producto_id, 'producto', p.nombre, 'num_lote', l.num_lote,
-                    'cantidad', l.cantidad, 'unidad', l.unidad,
+                    'cantidad', l.cantidad, 'unidad', l.unidad, 'precio', l.precio, 'sku', p.sku,
                     'origen', CASE WHEN l.produccion_id IS NOT NULL THEN 'produccion' WHEN l.preparado_id IS NOT NULL THEN 'preparado' ELSE 'manual' END,
                     'lote_id', COALESCE(l.produccion_id, l.preparado_id))
                   ORDER BY l.orden)
@@ -117,6 +127,7 @@ export const esquemaFiltroSalidas = z.object({
   desde: z.string().date().optional(),
   hasta: z.string().date().optional(),
   cliente_id: z.string().uuid().optional(),
+  salida_id: z.string().uuid().optional(),
   limite: z.coerce.number().int().min(1).max(5000).default(500),
 });
 
@@ -133,6 +144,7 @@ export function filtrosSalidas(f) {
   if (f.desde) cond.push(`s.fecha >= $${params.push(f.desde)}`);
   if (f.hasta) cond.push(`s.fecha <= $${params.push(f.hasta)}`);
   if (f.cliente_id) cond.push(`s.cliente_id = $${params.push(f.cliente_id)}`);
+  if (f.salida_id) cond.push(`s.id = $${params.push(f.salida_id)}`);
   return { where: cond.length ? `WHERE ${cond.join(" AND ")}` : "", params };
 }
 
@@ -205,6 +217,7 @@ const esquemaLinea = z.object({
   num_lote: z.string().trim().max(80).default(""),
   cantidad: z.number({ invalid_type_error: "Indica la cantidad de cada línea." }).positive("La cantidad de cada línea debe ser mayor que 0."),
   unidad: z.string().trim().max(40).default(""),
+  precio: z.number().min(0).max(1000000).nullable().optional(),
 });
 const esquemaSalida = z.object({
   fecha: z.string().date("La fecha no es válida."),
@@ -231,11 +244,18 @@ async function guardarLineas(c, obradorId, salidaId, lineas) {
       if (l.origen === "produccion") produccionId = l.lote_id; else preparadoId = l.lote_id;
     }
     await c.query(
-      `INSERT INTO salida_lineas (obrador_id, salida_id, producto_id, produccion_id, preparado_id, num_lote, cantidad, unidad, orden)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [obradorId, salidaId, productoId, produccionId, preparadoId, numLote, l.cantidad, l.unidad, i]
+      `INSERT INTO salida_lineas (obrador_id, salida_id, producto_id, produccion_id, preparado_id, num_lote, cantidad, unidad, precio, orden)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [obradorId, salidaId, productoId, produccionId, preparadoId, numLote, l.cantidad, l.unidad, l.precio ?? null, i]
     );
   }
+}
+
+/** El pedido tiene que poder enlazarse con el cliente en Holded: razón social y NIF. */
+async function exigirNif(c, clienteId) {
+  const { rows: [cl] } = await c.query("SELECT nombre, cif FROM clientes WHERE id = $1", [clienteId]);
+  if (!cl) throw fallo("Ese cliente no existe.", 400);
+  if (!cl.cif) throw fallo(`Falta el NIF de «${cl.nombre}». Complétalo en Salidas → Clientes.`, 400);
 }
 
 const errorSalida = (res, e) => {
@@ -253,6 +273,7 @@ salidasRouter.post(
     if (!d) return;
     try {
       const salida = await db(req, async (c) => {
+        await exigirNif(c, d.cliente_id);
         const { rows: [{ id }] } = await c.query(
           `INSERT INTO salidas (obrador_id, fecha, num_pedido, cliente_id, observaciones, creado_por)
            VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
@@ -276,6 +297,7 @@ salidasRouter.patch(
       const salida = await db(req, async (c) => {
         const { rows: [actual] } = await c.query("SELECT id FROM salidas WHERE id = $1 FOR UPDATE", [req.params.id]);
         if (!actual) throw fallo("Salida no encontrada.", 404);
+        if (d.cliente_id) await exigirNif(c, d.cliente_id);
         const { lineas, ...campos } = d;
         const claves = Object.keys(campos).filter((k) => campos[k] !== undefined);
         const sets = [...claves.map((k, i) => `${k} = $${i + 2}`), `modificado_por = $${claves.length + 2}`, "modificado_en = now()"];

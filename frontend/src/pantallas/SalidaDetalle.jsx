@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Pencil, Trash2, ChevronRight } from "lucide-react";
+import { Pencil, Trash2, ChevronRight, FileText, Upload } from "lucide-react";
 import { api } from "../api.js";
 import { Aviso, Cargando, Hoja, useSesion, useToast, num, fecha } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
@@ -39,6 +39,7 @@ export default function SalidaDetalle({ id }) {
             <dl className="ficha panel">
               <dt>Fecha</dt><dd>{fecha(s.fecha)}</dd>
               <dt>Cliente</dt><dd>{s.cliente}</dd>
+              <dt>NIF</dt><dd>{s.cliente_nif || "—"}</dd>
               <dt>Nº de pedido</dt><dd>{s.num_pedido}</dd>
               {s.observaciones && <><dt>Notas</dt><dd style={{ fontWeight: 400 }}>{s.observaciones}</dd></>}
               <dt>Registró</dt><dd>{s.creado_por_nombre || "—"}</dd>
@@ -54,13 +55,21 @@ export default function SalidaDetalle({ id }) {
                         <strong>{l.producto}</strong>
                         <span className="suave pequeno">Lote {l.num_lote || "sin nº"}{l.origen === "manual" ? " · anotado a mano" : ""}</span>
                       </span>
-                      <span className="numero">{num(l.cantidad)} {l.unidad}</span>
+                      <span className="numero" style={{ textAlign: "right" }}>{num(l.cantidad)} {l.unidad}{l.precio != null && <div className="pequeno suave">{num(l.precio)} €/ud</div>}</span>
                       {l.origen !== "manual" && <ChevronRight size={18} aria-hidden className="suave" />}
                     </button>
                   </li>
                 ))}
               </ul>
             </section>
+            <div className="fila" style={{ flexWrap: "wrap" }}>
+              <button className="boton" onClick={() => api.descargar(`/informes/salidas?formato=pdf&salida_id=${id}`, `salida_${s.num_pedido}.pdf`, true).catch((e) => setError(e.message))}>
+                <FileText size={20} aria-hidden /> PDF del pedido
+              </button>
+              <button className="boton" onClick={() => api.descargar(`/informes/salidas?formato=holded&salida_id=${id}`, `pedido-holded_${s.num_pedido}.xlsx`).catch((e) => setError(e.message))}>
+                <Upload size={20} aria-hidden /> Excel para Holded
+              </button>
+            </div>
             {puede("borrar") && <button className="boton peligro bloque" onClick={() => setBorrando(true)}><Trash2 size={20} aria-hidden /> Eliminar salida</button>}
           </>
         )}

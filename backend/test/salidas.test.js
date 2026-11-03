@@ -34,10 +34,14 @@ test("desactivado por defecto: no se puede usar hasta que el gestor lo active", 
 });
 
 test("clientes y nº de pedido propuesto", async () => {
-  const r = await O.api.post("/api/clientes", { nombre: "Restaurante El Puerto", cif: "B11111111" });
+  assert.equal((await O.api.post("/api/clientes", { nombre: "Sin NIF S.L." })).status, 400, "el NIF es obligatorio");
+  const r = await O.api.post("/api/clientes", { nombre: "Restaurante El Puerto", cif: "b-1111 1111", direccion: "Calle Mar 1", poblacion: "La Laguna", codigo_postal: "38201", provincia: "Santa Cruz de Tenerife" });
   assert.equal(r.status, 201);
   cliente = r.body.cliente;
-  assert.equal((await O.api.post("/api/clientes", { nombre: "restaurante el puerto" })).status, 409);
+  assert.equal(cliente.cif, "B11111111", "el NIF se guarda limpio y en mayúsculas");
+  assert.equal(cliente.pais, "España");
+  assert.equal((await O.api.post("/api/clientes", { nombre: "restaurante el puerto", cif: "B22222222" })).status, 409);
+  assert.equal((await O.api.post("/api/clientes", { nombre: "Otro nombre", cif: "B11111111" })).status, 409, "NIF repetido");
   const { num_pedido } = (await O.api.get("/api/salidas/siguiente-pedido?fecha=2026-10-15")).body;
   assert.equal(num_pedido, "P-261015-1");
 });
@@ -87,4 +91,46 @@ test("registrar, editar y borrar una salida; el lote muestra a qué cliente ha s
   assert.equal((await O.api.delete(`/api/salidas/${s.id}`)).status, 204);
   // Aislamiento: el otro obrador no ve nada
   assert.equal((await B.api.get(`/api/producciones/${lotes[2].id}`)).status, 404);
+});
+
+test("exportar a Holded: plantilla de pedidos de venta con NIF, SKU, lote y precio", async () => {
+  await O.api.patch("/api/obrador", { impuesto_tipo: "IGIC", impuesto_pct: 3 });
+  await O.api.patch(`/api/catalogo/productos/${croquetas}`, { sku: "CRO-JAM", precio_venta: 12.5 });
+  await O.api.post("/api/salidas", {
+    fecha: "2026-10-20", num_pedido: "P-261020-1", cliente_id: cliente.id, observaciones: "Albarán 55",
+    lineas: [
+      { producto_id: croquetas, origen: "produccion", lote_id: lotes[1].id, cantidad: 10, unidad: "bandejas" },
+      { producto_id: croquetas, origen: "produccion", lote_id: lotes[2].id, cantidad: 4, unidad: "kg", precio: 11 },
+    ],
+  });
+  const r = await O.api.get("/api/informes/salidas?formato=holded&desde=2026-10-20&hasta=2026-10-20").buffer(true).parse((res, cb) => {
+    const partes = []; res.on("data", (d) => partes.push(d)); res.on("end", () => cb(null, Buffer.concat(partes)));
+  });
+  assert.equal(r.status, 200);
+  assert.match(r.headers["content-disposition"], /pedidos-holded_2026-10-20_2026-10-20\.xlsx/);
+  const ExcelJS = (await import("exceljs")).default;
+  const libro = new ExcelJS.Workbook();
+  await libro.xlsx.load(r.body);
+  const hoja = libro.getWorksheet("Holded");
+  const fila = (n) => hoja.getRow(n).values.slice(1);
+  assert.equal(fila(1)[0], "Num Pedido");
+  assert.equal(fila(1)[18], "IGIC %");
+  assert.equal(fila(1).length, 29);
+  const [a, b] = [fila(2), fila(3)];
+  assert.equal(a[0], "P-261020-1");
+  assert.equal(a[2], "20/10/2026");
+  assert.equal(a[5], "Restaurante El Puerto");
+  assert.equal(a[6], "B11111111");
+  assert.equal(a[12], "Croquetas de jamón");
+  assert.equal(a[13], "Lote CR-2 · 10 bandejas");
+  assert.equal(a[14], "CRO-JAM");
+  assert.equal(a[15], 12.5, "precio de venta del producto");
+  assert.equal(a[16], 10);
+  assert.equal(a[18], 3);
+  assert.equal(b[15], 11, "precio indicado en la línea");
+  assert.equal(hoja.rowCount, 3);
+  // Exportar solo un pedido
+  const s = (await O.api.get("/api/salidas?q=P-261020-1")).body.salidas[0];
+  assert.equal((await O.api.get(`/api/informes/salidas?formato=holded&salida_id=${s.id}`)).status, 200);
+  assert.equal((await O.api.get("/api/informes/entradas?formato=holded")).status, 400);
 });

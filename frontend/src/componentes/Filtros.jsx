@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Search, FileSpreadsheet, FileText, X } from "lucide-react";
+import { Search, FileSpreadsheet, FileText, X, Upload } from "lucide-react";
 import { api } from "../api.js";
 import { useToast } from "./ui.jsx";
 
@@ -10,7 +10,7 @@ import { useToast } from "./ui.jsx";
  */
 const NOMBRE = { productos: "productos", entradas: "entradas", produccion: "produccion" };
 
-export default function Filtros({ f, setF, placeholder, informe, parametros = {}, etiquetaFechas = "Fecha", children }) {
+export default function Filtros({ f, setF, placeholder, informe, parametros = {}, etiquetaFechas = "Fecha", holded = false, children }) {
   const toast = useToast();
   const [bajando, setBajando] = useState(null);
   const cambiar = (p) => setF((x) => ({ ...x, ...p }));
@@ -24,7 +24,8 @@ export default function Filtros({ f, setF, placeholder, informe, parametros = {}
     setBajando(formato);
     try {
       const sufijo = [f.desde, f.hasta].filter(Boolean).join("_") || new Date().toISOString().slice(0, 10);
-      await api.descargar(`/informes/${informe}?${p}`, `${parametros.interna === "1" ? "produccion-interna" : parametros.interna === "0" ? "produccion-final" : NOMBRE[informe] || informe}_${sufijo}.${formato}`, formato === "pdf");
+      const base = formato === "holded" ? "pedidos-holded" : parametros.interna === "1" ? "produccion-interna" : parametros.interna === "0" ? "produccion-final" : NOMBRE[informe] || informe;
+      await api.descargar(`/informes/${informe}?${p}`, `${base}_${sufijo}.${formato === "holded" ? "xlsx" : formato}`, formato === "pdf");
     } catch (e) {
       toast(e.message);
     } finally {
@@ -57,6 +58,11 @@ export default function Filtros({ f, setF, placeholder, informe, parametros = {}
         <button type="button" className="boton" disabled={!!bajando} onClick={() => descargar("xlsx")}>
           <FileSpreadsheet size={20} aria-hidden /> {bajando === "xlsx" ? "Generando…" : "Excel"}
         </button>
+        {holded && (
+          <button type="button" className="boton" disabled={!!bajando} onClick={() => descargar("holded")} title="Pedidos de venta con el formato de importación de Holded">
+            <Upload size={20} aria-hidden /> {bajando === "holded" ? "Generando…" : "Excel para Holded"}
+          </button>
+        )}
         <button type="button" className="boton" disabled={!!bajando} onClick={() => descargar("pdf")}>
           <FileText size={20} aria-hidden /> {bajando === "pdf" ? "Generando…" : "Imprimir PDF"}
         </button>
