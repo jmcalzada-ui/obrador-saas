@@ -134,3 +134,28 @@ test("exportar a Holded: plantilla de pedidos de venta con NIF, SKU, lote y prec
   assert.equal((await O.api.get(`/api/informes/salidas?formato=holded&salida_id=${s.id}`)).status, 200);
   assert.equal((await O.api.get("/api/informes/entradas?formato=holded")).status, 400);
 });
+
+test("ficha de trazabilidad del lote en PDF: lote final, interno y entrada", async () => {
+  const guardar = (nombre) => async (r) => { if (process.env.INFORMES_DIR) (await import("node:fs")).writeFileSync(`${process.env.INFORMES_DIR}/${nombre}`, r.body); };
+  const pdf = (u) => O.api.get(u).buffer(true).parse((res, cb) => { const p = []; res.on("data", (d) => p.push(d)); res.on("end", () => cb(null, Buffer.concat(p))); });
+  const final = await pdf(`/api/informes/lote/produccion/${lotes[1].id}`);
+  assert.equal(final.status, 200);
+  assert.equal(final.headers["content-type"], "application/pdf");
+  assert.equal(final.body.subarray(0, 4).toString(), "%PDF");
+  await guardar("trazabilidad-final.pdf")(final);
+  // Una entrada de mercancía usada en producciones que han salido a clientes
+  const rec = (await O.api.post("/api/recepciones", { fecha: "2026-10-01", producto_id: harina.id, cantidad: 25, num_lote: "H-TRZ" })).body.recepcion;
+  const interna = (await O.api.post("/api/preparados", { nuevo: { nombre: "Bechamel", unidad_medida: "kg", proceso_termico: false },
+    fecha: "2026-10-02", num_lote: "BE-TRZ", cantidad: 10, ingredientes: [{ origen: "recepcion", lote_id: rec.id, cantidad: 2 }] })).body.preparado;
+  const fin = (await O.api.post("/api/producciones", { producto_id: croquetas, fecha: "2026-10-03", num_lote: "CR-TRZ", cantidad: 8,
+    ingredientes: [{ origen: "preparado", lote_id: interna.id, cantidad: 5 }] })).body.produccion;
+  await O.api.post("/api/salidas", { fecha: "2026-10-04", num_pedido: "P-TRZ", cliente_id: cliente.id,
+    lineas: [{ producto_id: croquetas, origen: "produccion", lote_id: fin.id, cantidad: 3, unidad: "kg" }] });
+  const e = await pdf(`/api/informes/lote/recepcion/${rec.id}`);
+  assert.equal(e.status, 200);
+  await guardar("trazabilidad-entrada.pdf")(e);
+  const i = await pdf(`/api/informes/lote/preparado/${interna.id}`);
+  assert.equal(i.status, 200);
+  await guardar("trazabilidad-interna.pdf")(i);
+  assert.equal((await B.api.get(`/api/informes/lote/produccion/${lotes[1].id}`)).status, 404, "otro obrador no la ve");
+});

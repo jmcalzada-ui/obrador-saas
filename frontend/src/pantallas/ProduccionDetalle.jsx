@@ -7,6 +7,7 @@ import EstadoTermico from "../componentes/EstadoTermico.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import { ELABORACION, rutaLote } from "../componentes/elaboracion.js";
 import { CONTROL_STOCK } from "../componentes/fase.js";
+import BotonTrazabilidad from "../componentes/BotonTrazabilidad.jsx";
 
 const hora = (iso) => (iso ? new Date(iso).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }) : "");
 const horaInput = (iso) => (iso ? new Date(iso).toTimeString().slice(0, 5) : "");
@@ -58,6 +59,8 @@ export default function ProduccionDetalle({ id, tipo = "final" }) {
               </div>
               <div className="meta"><span className={`distintivo ${cfg.interna ? "azul" : ""}`}>{cfg.interna ? "Producción interna" : "Producción final"}</span><EstadoTermico control={t} />{!p.activo && <span className="distintivo">De baja</span>}</div>
             </div>
+
+            <BotonTrazabilidad origen={cfg.clave === "final" ? "produccion" : "preparado"} id={id} numLote={p.num_lote} />
 
             <dl className="ficha panel">
               <dt>Fecha</dt><dd>{fecha(p.fecha)}</dd>

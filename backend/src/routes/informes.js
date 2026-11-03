@@ -6,11 +6,34 @@ import { requireAuth, requirePermiso, db } from "../auth/middleware.js";
 import { ruta, validar } from "../lib/utiles.js";
 import { SECCIONES, generarExcel, generarPdf, generarHolded } from "../lib/informes.js";
 import { leerLogo } from "./obrador.js";
+import { datosTrazabilidad, generarPdfLote } from "../lib/trazabilidad.js";
 
 export const informesRouter = Router();
 informesRouter.use(requireAuth, requirePermiso("ver"));
 
 const NOMBRE_ARCHIVO = { salidas: "salidas", productos: "productos", entradas: "entradas", produccion: "produccion", intermedia: "produccion-interna", final: "produccion-final" };
+
+// Ficha de trazabilidad de un lote en PDF (datos, ingredientes y a quién ha llegado).
+informesRouter.get(
+  "/lote/:origen/:id",
+  ruta(async (req, res) => {
+    const p = validar(z.object({ origen: z.enum(["produccion", "preparado", "recepcion"]), id: z.string().uuid() }), req.params, res);
+    if (!p) return;
+    const r = await db(req, async (c) => {
+      const datos = await datosTrazabilidad(c, p.origen, p.id);
+      if (!datos) return null;
+      return {
+        datos, logo: await leerLogo(c),
+        obrador: (await c.query("SELECT nombre, razon_social, registro_sanitario FROM obradores WHERE id = $1", [req.usuario.obrador_id])).rows[0],
+      };
+    });
+    if (!r) return res.status(404).json({ error: "Lote no encontrado." });
+    const nombre = `trazabilidad-lote_${(r.datos.lote.num_lote || "sin-numero").replace(/[^\w.-]+/g, "-")}.pdf`;
+    res.set("Content-Type", "application/pdf");
+    res.set("Content-Disposition", `inline; filename="${nombre}"`);
+    res.send(await generarPdfLote(r.datos, r.obrador, r.logo));
+  })
+);
 
 informesRouter.get(
   "/:seccion",

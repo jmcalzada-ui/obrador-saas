@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { Aviso, Cargando, Hoja, useSesion, useToast, num, fecha, euros } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import EtiquetaLote from "../componentes/EtiquetaLote.jsx";
+import BotonTrazabilidad from "../componentes/BotonTrazabilidad.jsx";
 
 const control = (v) => (v === true ? "Correcto" : v === false ? <span style={{ color: "var(--rojo)" }}>Incorrecto</span> : "—");
 const ESTADOS = { conforme: "Conforme", conforme_con_incidencia: "Conforme con incidencia", no_conforme: "No conforme" };
@@ -54,6 +55,7 @@ export default function RecepcionDetalle({ id }) {
         {r && (
           <>
             <EtiquetaLote r={r} onClick={() => {}} />
+            <BotonTrazabilidad origen="recepcion" id={id} numLote={r.num_lote} />
             <dl className="ficha panel">
               <dt>Entrada</dt><dd>{fecha(r.fecha)}</dd>
               <dt>Caducidad</dt><dd>{fecha(r.caducidad)}</dd>
