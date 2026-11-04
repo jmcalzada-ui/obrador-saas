@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { Aviso, Campo, Cargando, Opciones, useToast, hoyISO, aNumero, num, fecha, euros } from "../componentes/ui.jsx";
 import Autocompletar from "../componentes/Autocompletar.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
+import EntradaTemperatura from "../componentes/EntradaTemperatura.jsx";
 
 const PASOS = ["Producto", "Lote y cantidad", "Control de entrada", "Revisar"];
 
@@ -326,7 +327,8 @@ function PasoControl({ f, cambiar, precioUnidad, precioTotal }) {
       </div>
 
       <Campo etiqueta="Temperatura de entrada (°C)" id="temp" ayuda={limite ? limite.texto : "Para productos refrigerados o congelados."}>
-        <input id="temp" className="entrada grande" inputMode="decimal" autoComplete="off" placeholder="—" value={f.temp_entrada} onChange={(e) => cambiar({ temp_entrada: e.target.value })} />
+        <EntradaTemperatura id="temp" className="entrada grande" placeholder="—" value={f.temp_entrada} onChange={(x) => cambiar({ temp_entrada: x })}
+          negativoPorDefecto={f.producto?.conservacion === "congelado"} />
       </Campo>
       {fueraTemp && <Aviso tipo="error">La temperatura supera el máximo para un producto {f.producto.conservacion}. Valora rechazar la mercancía o anota la incidencia.</Aviso>}
 

@@ -136,7 +136,8 @@ export function diasHasta(iso) {
 /** Convierte "2,5" o "2.5" en número (teclados del móvil en español usan coma). */
 export function aNumero(texto) {
   if (texto === null || texto === undefined || String(texto).trim() === "") return null;
-  const n = Number(String(texto).replace(/\s/g, "").replace(",", "."));
+  // Acepta coma decimal y los distintos signos menos (−, –) que ponen algunos teclados.
+  const n = Number(String(texto).replace(/\s/g, "").replace(/[−–]/g, "-").replace(",", "."));
   return Number.isFinite(n) ? n : NaN;
 }
 

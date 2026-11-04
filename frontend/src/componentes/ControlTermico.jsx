@@ -1,6 +1,7 @@
 import React from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { Campo, aNumero } from "./ui.jsx";
+import EntradaTemperatura from "./EntradaTemperatura.jsx";
 
 /** "2026-10-21" + "10:30" → ISO con la zona horaria del dispositivo. */
 export function aISO(fecha, hora) {
@@ -20,15 +21,20 @@ export function evaluar(obj, v, fecha, conCoccion = true) {
   const coccionOk = !conCoccion || coccion == null || Number.isNaN(coccion) ? null : coccion >= obj.coccion_temp_min;
   let minutos = null;
   let abatOk = null;
+  let motivo = null;
   const fin = aNumero(v.abat_temp_fin);
   if (v.abat_hora_inicio && v.abat_hora_fin && fin != null && !Number.isNaN(fin)) {
     const ini = new Date(aISO(fecha, v.abat_hora_inicio));
     let f = new Date(aISO(fecha, v.abat_hora_fin));
     if (f < ini) f = new Date(f.getTime() + 86400000);
     minutos = Math.round((f - ini) / 60000);
-    abatOk = fin <= obj.abatimiento_temp_max && minutos <= obj.abatimiento_minutos_max;
+    const tempOk = fin <= obj.abatimiento_temp_max;
+    const tiempoOk = minutos <= obj.abatimiento_minutos_max;
+    abatOk = tempOk && tiempoOk;
+    // Por qué falla, para decirlo claro en pantalla.
+    motivo = abatOk ? null : !tempOk && !tiempoOk ? "temperatura y tiempo" : !tempOk ? "temperatura" : "tiempo";
   }
-  return { coccionOk, abatOk, minutos, fuera: coccionOk === false || abatOk === false };
+  return { coccionOk, abatOk, minutos, motivo, fin, fuera: coccionOk === false || abatOk === false };
 }
 
 function Resultado({ ok, textoOk, textoMal }) {
@@ -53,7 +59,7 @@ export default function ControlTermico({ obj, v, cambiar, fecha, soloAbatimiento
           <p className="objetivo">Objetivo: al menos {obj.coccion_temp_min} °C en el centro del producto.</p>
           <div className="dos-columnas">
             <Campo etiqueta="Temperatura (°C)" id="ct-temp">
-              <input id="ct-temp" className="entrada grande" inputMode="decimal" value={v.coccion_temp} onChange={(e) => cambiar({ coccion_temp: e.target.value })} />
+              <EntradaTemperatura id="ct-temp" className="entrada grande" value={v.coccion_temp} onChange={(x) => cambiar({ coccion_temp: x })} />
             </Campo>
             <Campo etiqueta="Tiempo (min)" id="ct-min">
               <input id="ct-min" className="entrada grande" inputMode="numeric" value={v.coccion_minutos} onChange={(e) => cambiar({ coccion_minutos: e.target.value })} />
@@ -72,13 +78,14 @@ export default function ControlTermico({ obj, v, cambiar, fecha, soloAbatimiento
         </p>
         <div className="dos-columnas">
           <Campo etiqueta={congelado ? "Temp. al meterlo (°C)" : "Temp. al entrar (°C)"} id="ct-ati">
-            <input id="ct-ati" className="entrada" inputMode="decimal" value={v.abat_temp_inicio} onChange={(e) => cambiar({ abat_temp_inicio: e.target.value })} />
+            <EntradaTemperatura id="ct-ati" value={v.abat_temp_inicio} onChange={(x) => cambiar({ abat_temp_inicio: x })} />
           </Campo>
           <Campo etiqueta={congelado ? "Hora en que se mete" : "Hora de entrada"} id="ct-hi">
             <input id="ct-hi" className="entrada" type="time" value={v.abat_hora_inicio} onChange={(e) => cambiar({ abat_hora_inicio: e.target.value })} />
           </Campo>
           <Campo etiqueta={congelado ? "Temp. alcanzada (°C)" : "Temp. al salir (°C)"} id="ct-atf">
-            <input id="ct-atf" className="entrada" inputMode="decimal" value={v.abat_temp_fin} onChange={(e) => cambiar({ abat_temp_fin: e.target.value })} />
+            <EntradaTemperatura id="ct-atf" value={v.abat_temp_fin} onChange={(x) => cambiar({ abat_temp_fin: x })}
+              negativoPorDefecto={obj.abatimiento_temp_max < 0} placeholder={obj.abatimiento_temp_max < 0 ? `p. ej. ${obj.abatimiento_temp_max}` : undefined} />
           </Campo>
           <Campo etiqueta={congelado ? "Hora en que llega" : "Hora de salida"} id="ct-hf">
             <input id="ct-hf" className="entrada" type="time" value={v.abat_hora_fin} onChange={(e) => cambiar({ abat_hora_fin: e.target.value })} />
@@ -87,7 +94,10 @@ export default function ControlTermico({ obj, v, cambiar, fecha, soloAbatimiento
         {!soloAbatimiento && !v.abat_hora_fin && (
           <p className="suave pequeno">{congelado ? "Si aún no ha llegado a la temperatura, deja vacía la hora de llegada y complétala después desde el lote." : "Si el abatimiento aún no ha terminado, deja la salida vacía y complétala después desde el lote."}</p>
         )}
-        <Resultado ok={r.abatOk} textoOk={`${congelado ? "Congelación" : "Abatimiento"} correcto (${r.minutos} min)`} textoMal={`Fuera de objetivo (${r.minutos} min)`} />
+        <Resultado ok={r.abatOk} textoOk={`${congelado ? "Congelación" : "Abatimiento"} correcto (${r.minutos} min)`}
+          textoMal={r.motivo === "tiempo"
+            ? `Fuera de objetivo: ${r.minutos} min, más de los ${obj.abatimiento_minutos_max} min permitidos`
+            : `Fuera de objetivo: ${String(r.fin).replace(".", ",")} °C no llega a ${obj.abatimiento_temp_max} °C${r.motivo === "temperatura y tiempo" ? ` y tarda ${r.minutos} min` : ` (${r.minutos} min)`}${obj.abatimiento_temp_max < 0 && r.fin > 0 ? ". Si es bajo cero, pulsa ± para poner el signo menos" : ""}`} />
       </section>
 
       {r.fuera && (

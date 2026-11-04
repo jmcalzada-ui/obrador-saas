@@ -6,6 +6,7 @@ import Cabecera from "../componentes/Cabecera.jsx";
 
 import SelectorAlergenos, { ResumenAlergenos } from "../componentes/Alergenos.jsx";
 import { FICHAS_TECNICAS } from "../componentes/fase.js";
+import EntradaTemperatura from "../componentes/EntradaTemperatura.jsx";
 
 const CONSERVACION = { ambiente: "Ambiente", refrigerado: "Refrigerado", congelado: "Congelado" };
 
@@ -274,11 +275,11 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
           {f.proceso_termico && (
             <div className="panel pila">
               <Campo etiqueta="Cocción: temperatura mínima en el centro (°C)" id="p-coc">
-                <input id="p-coc" className="entrada" inputMode="decimal" value={f.coccion_temp_min} onChange={(e) => setF({ ...f, coccion_temp_min: e.target.value })} />
+                <EntradaTemperatura id="p-coc" value={f.coccion_temp_min} onChange={(x) => setF({ ...f, coccion_temp_min: x })} />
               </Campo>
               <div className="dos-columnas">
                 <Campo etiqueta="Abatir hasta (°C)" id="p-abt">
-                  <input id="p-abt" className="entrada" inputMode="decimal" value={f.abatimiento_temp_max} onChange={(e) => setF({ ...f, abatimiento_temp_max: e.target.value })} />
+                  <EntradaTemperatura id="p-abt" value={f.abatimiento_temp_max} onChange={(x) => setF({ ...f, abatimiento_temp_max: x })} />
                 </Campo>
                 <Campo etiqueta="En como máximo (min)" id="p-abm">
                   <input id="p-abm" className="entrada" inputMode="numeric" value={f.abatimiento_minutos_max} onChange={(e) => setF({ ...f, abatimiento_minutos_max: e.target.value })} />
@@ -290,7 +291,7 @@ function EditarProducto({ p, onCerrar, onGuardado, onBorrado }) {
             <strong>Cuando un lote se guarda congelado</strong>
             <div className="dos-columnas">
               <Campo etiqueta="Congelar hasta (°C)" id="p-cgt">
-                <input id="p-cgt" className="entrada" inputMode="decimal" value={f.congelacion_temp_max} onChange={(e) => setF({ ...f, congelacion_temp_max: e.target.value })} />
+                <EntradaTemperatura id="p-cgt" value={f.congelacion_temp_max} onChange={(x) => setF({ ...f, congelacion_temp_max: x })} negativoPorDefecto />
               </Campo>
               <Campo etiqueta="En como máximo (min)" id="p-cgm">
                 <input id="p-cgm" className="entrada" inputMode="numeric" value={f.congelacion_minutos_max} onChange={(e) => setF({ ...f, congelacion_minutos_max: e.target.value })} />
