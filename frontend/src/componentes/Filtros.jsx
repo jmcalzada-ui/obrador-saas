@@ -56,15 +56,15 @@ export default function Filtros({ f, setF, placeholder, informe, parametros = {}
       {children}
       <div className="exportar">
         <button type="button" className="boton" disabled={!!bajando} onClick={() => descargar("xlsx")}>
-          <FileSpreadsheet size={20} aria-hidden /> {bajando === "xlsx" ? "Generando…" : "Excel"}
+          <FileSpreadsheet size={20} aria-hidden /> {bajando === "xlsx" ? "…" : "Excel"}
         </button>
         {holded && (
           <button type="button" className="boton" disabled={!!bajando} onClick={() => descargar("holded")} title="Pedidos de venta con el formato de importación de Holded">
-            <Upload size={20} aria-hidden /> {bajando === "holded" ? "Generando…" : "Excel para Holded"}
+            <Upload size={20} aria-hidden /> {bajando === "holded" ? "…" : <><span className="t-largo">Excel para </span>Holded</>}
           </button>
         )}
         <button type="button" className="boton" disabled={!!bajando} onClick={() => descargar("pdf")}>
-          <FileText size={20} aria-hidden /> {bajando === "pdf" ? "Generando…" : "Imprimir PDF"}
+          <FileText size={20} aria-hidden /> {bajando === "pdf" ? "…" : <><span className="t-largo">Imprimir </span>PDF</>}
         </button>
       </div>
     </div>

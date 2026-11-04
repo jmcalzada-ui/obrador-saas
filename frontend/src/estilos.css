@@ -596,3 +596,21 @@ button.enlace { border: 0; background: none; padding: 0; color: var(--azul); fon
   .nav .marca-oc { display: flex; margin-top: auto; padding: 16px 0 8px; }
 }
 .marca-oc.pie { padding: 18px 0 4px; }
+
+/* Móvil: botones de impresión y pestañas, cada grupo en una sola línea */
+.filtros .exportar { display: flex; flex-wrap: nowrap; gap: 6px; }
+.filtros .exportar .boton { flex: 1 1 0; min-width: 0; padding: 0 6px; gap: 6px; font-size: 0.88rem; }
+.filtros .exportar .boton svg { width: 18px; height: 18px; flex-shrink: 0; }
+.filtros .exportar .t-largo { display: none; }
+.opciones.compactas { display: flex; flex-wrap: nowrap; gap: 6px; }
+.opciones.compactas .opcion { flex: 1 1 0; min-width: 0; padding: 6px 4px; font-size: 0.88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 1024px) {
+  .filtros .exportar .boton { flex: 0 0 auto; padding: 0 14px; font-size: 0.9rem; }
+  .filtros .exportar .t-largo { display: inline; }
+  .opciones.compactas .opcion { flex: 0 0 auto; padding: 6px 16px; font-size: 0.92rem; }
+}
+@media (max-width: 380px) {
+  .opciones.compactas { gap: 4px; }
+  .opciones.compactas .opcion { padding: 6px 2px; font-size: 0.82rem; }
+  .filtros .exportar .boton { font-size: 0.84rem; gap: 4px; }
+}

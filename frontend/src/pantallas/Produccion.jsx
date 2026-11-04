@@ -9,7 +9,7 @@ import Tabla, { ordenar, SelectorOrden } from "../componentes/Tabla.jsx";
 import useEscritorio from "../hooks/useEscritorio.js";
 import { rutaLote } from "../componentes/elaboracion.js";
 
-const TIPOS = [["todas", "Todas"], ["internas", "Internas"], ["finales", "Finales"], ["guardados", "Nombres guardados"]];
+const TIPOS = [["todas", "Todas"], ["internas", "Internas"], ["finales", "Finales"], ["guardados", "Guardados"]];
 const PARAM = { todas: {}, internas: { interna: "1" }, finales: { interna: "0" } };
 
 function Caducidad({ p }) {
