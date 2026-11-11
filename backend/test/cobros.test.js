@@ -45,6 +45,9 @@ test("alta completa: primer cobro → cuenta activa y correo de bienvenida con f
   obradorId = o.id;
   assert.equal(o.cif, "B12345678");
   assert.equal(o.municipio, ALTA.municipio);
+  // Constancia de la aceptación de los textos legales
+  assert.equal(o.condiciones_version, "1.0");
+  assert.ok(o.condiciones_aceptadas_en);
   assert.equal((await estado()).estado, "activo");
   assert.deepEqual(await correos(), ["bienvenida"]);
   const token = await login(ALTA.gestor_email, ALTA.password);

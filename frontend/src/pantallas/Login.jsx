@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { api, sesion } from "../api.js";
 import { Aviso, Campo } from "../componentes/ui.jsx";
 import MarcaOC from "../componentes/MarcaOC.jsx";
+import { EnlacesLegales } from "./Legal.jsx";
 
 export default function Login({ onEntrar }) {
   const [email, setEmail] = useState("");
@@ -52,6 +53,7 @@ export default function Login({ onEntrar }) {
       </form>
       <p className="suave pequeno">¿Has olvidado la contraseña? Pide al gestor de tu obrador que te la restablezca.</p>
       <MarcaOC className="pie" />
+      <EnlacesLegales />
     </main>
   );
 }

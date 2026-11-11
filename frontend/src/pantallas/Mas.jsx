@@ -3,6 +3,7 @@ import { Users, Store, UserRound, LogOut, ChevronRight, Settings } from "lucide-
 import { useSesion, NOMBRE_ROL } from "../componentes/ui.jsx";
 import Cabecera from "../componentes/Cabecera.jsx";
 import MarcaOC from "../componentes/MarcaOC.jsx";
+import { EnlacesLegales } from "./Legal.jsx";
 
 export default function Mas() {
   const { usuario, puede, salir } = useSesion();
@@ -37,6 +38,7 @@ export default function Mas() {
         </ul>
         <button className="boton bloque" onClick={salir}><LogOut size={20} aria-hidden /> Cerrar sesión</button>
         <MarcaOC className="pie" />
+        <EnlacesLegales />
       </main>
     </>
   );

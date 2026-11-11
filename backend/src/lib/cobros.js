@@ -4,6 +4,7 @@
 //  · cobro fallido → aviso inmediato; a los 5 días recordatorio; a los 10 días suspensión
 //  · cobro correcto tras un impago → reactivación automática
 import Stripe from "stripe";
+import { impuestoParaCliente } from "./impuestos.js";
 import { config } from "../config.js";
 import { comoSistema } from "../db/pool.js";
 import { enviarCorreo } from "./correo.js";
@@ -65,6 +66,13 @@ export async function crearSesionPago({ obradorId, metodo }) {
   if (!stripe) {
     throw Object.assign(new Error("Los pagos todavía no están configurados."), { status: 503 });
   }
+  // IGIC / IVA según el territorio del obrador; si no lleva impuesto, la
+  // factura lo explica (inversión del sujeto pasivo / operación no sujeta).
+  const impuesto = impuestoParaCliente(d.obrador.codigo_postal);
+  const fiscalCliente = {
+    tax_exempt: impuesto.tipo ? "none" : impuesto.mencion?.includes("Inversión") ? "reverse" : "exempt",
+    invoice_settings: { footer: impuesto.mencion || "" },
+  };
   let customerId = d.suscripcion.stripe_customer_id;
   if (!customerId) {
     const customer = await stripe.customers.create({
@@ -72,6 +80,7 @@ export async function crearSesionPago({ obradorId, metodo }) {
       email: destinatario(d),
       phone: d.obrador.telefono || undefined,
       preferred_locales: ["es"],
+      ...fiscalCliente,
       address: {
         line1: d.obrador.direccion_fiscal || undefined,
         postal_code: d.obrador.codigo_postal || undefined,
@@ -86,7 +95,10 @@ export async function crearSesionPago({ obradorId, metodo }) {
       await stripe.customers.createTaxId(customerId, { type: "es_cif", value: d.obrador.cif }).catch(() => {});
     }
     await comoSistema((c) => c.query("UPDATE suscripciones SET stripe_customer_id = $2 WHERE obrador_id = $1", [obradorId, customerId]));
+  } else {
+    await stripe.customers.update(customerId, fiscalCliente);
   }
+  const tasa = impuesto.tipo ? await tasaStripe(impuesto) : null;
   const anual = d.suscripcion.periodicidad === "anual";
   const P = config.stripe.precios;
   const precioBase = d.suscripcion.plan === "completo" ? P.completoAnual : anual ? P.basicoAnual : P.basico;
@@ -94,6 +106,7 @@ export async function crearSesionPago({ obradorId, metodo }) {
   if (!precioBase) throw Object.assign(new Error("Este plan todavía no está configurado para el pago."), { status: 503 });
   const items = [{ price: precioBase, quantity: 1 }];
   if (d.suscripcion.usuarios_extra > 0 && precioExtra) items.push({ price: precioExtra, quantity: d.suscripcion.usuarios_extra });
+  if (tasa) for (const it of items) it.tax_rates = [tasa];
   const sesion = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -106,6 +119,28 @@ export async function crearSesionPago({ obradorId, metodo }) {
     cancel_url: `${config.urlPublica}/alta?cancelado=1`,
   });
   return { url: sesion.url };
+}
+
+/** Tipo impositivo de Stripe (IGIC 7 % o IVA 21 %), creado la primera vez. */
+const tasasCache = new Map();
+async function tasaStripe(imp) {
+  const clave = `${imp.tipo}-${imp.pct}`;
+  if (tasasCache.has(clave)) return tasasCache.get(clave);
+  const existentes = await stripe.taxRates.list({ active: true, limit: 100 });
+  let tasa = existentes.data.find((t) => t.metadata?.clave === clave && !t.inclusive);
+  if (!tasa) {
+    tasa = await stripe.taxRates.create({
+      display_name: imp.tipo,
+      percentage: imp.pct,
+      inclusive: false,
+      country: "ES",
+      jurisdiction: imp.tipo === "IGIC" ? "Canarias" : undefined,
+      description: `${imp.tipo} ${imp.pct} %`,
+      metadata: { clave },
+    });
+  }
+  tasasCache.set(clave, tasa.id);
+  return tasa.id;
 }
 
 /** Portal de Stripe para que el gestor cambie tarjeta o cuenta bancaria. */

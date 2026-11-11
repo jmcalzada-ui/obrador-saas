@@ -40,7 +40,7 @@ export const config = {
   // Correo transaccional (Resend). Sin clave, los correos se registran pero no se envían.
   correo: {
     resendApiKey: process.env.RESEND_API_KEY || null,
-    remitente: process.env.CORREO_REMITENTE || "Registro de obrador <no-responder@example.com>",
+    remitente: process.env.CORREO_REMITENTE || "Obrador Control <no-responder@ocobradorcontrol.com>",
     responderA: process.env.CORREO_RESPONDER_A || null,
   },
 
@@ -56,6 +56,24 @@ export const config = {
   controlStock: process.env.CONTROL_STOCK === "1",
   // Fichas técnicas en PDF por marca: llegan en la fase 2, con su lectura por IA.
   fichasTecnicas: process.env.FICHAS_TECNICAS === "1",
+
+  // Titular del servicio (aviso legal, privacidad, facturas). En Railway:
+  // TITULAR_NOMBRE, TITULAR_NIF, TITULAR_DOMICILIO, CONTACTO_EMAIL.
+  titular: {
+    nombre: process.env.TITULAR_NOMBRE || "[Titular pendiente de configurar]",
+    nif: process.env.TITULAR_NIF || "[NIF pendiente]",
+    domicilio: process.env.TITULAR_DOMICILIO || "[Domicilio pendiente]",
+    email: process.env.CONTACTO_EMAIL || "hola@ocobradorcontrol.com",
+    web: process.env.WEB_PUBLICA || "www.ocobradorcontrol.com",
+  },
+  // Versión de los textos legales que se aceptan en el alta (subirla al cambiarlos).
+  versionLegal: "1.0",
+  // Impuestos de la suscripción según dónde tiene la sede fiscal la titular (ver lib/impuestos.js).
+  fiscal: {
+    emisorTerritorio: process.env.EMISOR_TERRITORIO === "peninsula" ? "peninsula" : "canarias",
+    igicPct: Number(process.env.IGIC_PCT) || 7,
+    ivaPct: Number(process.env.IVA_PCT) || 21,
+  },
 
   // Precios del plan (para mostrar y calcular el importe; Stripe cobra lo suyo).
   // Mensual: básico 29,90 + módulos (escandallos, precios y lectura por IA 20 · APPCC temperaturas 10) + 3 por usuario extra.

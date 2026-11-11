@@ -9,6 +9,7 @@ import { crearObrador } from "../lib/obradores.js";
 import { crearSesionPago, calcularImporte } from "../lib/cobros.js";
 import { ruta, validar } from "../lib/utiles.js";
 import { SECTORES } from "./obrador.js";
+import { impuestoParaCliente } from "../lib/impuestos.js";
 
 export const altaRouter = Router();
 
@@ -33,6 +34,8 @@ altaRouter.get("/plan", (req, res) => {
     modulos: { escandallos: t.escandallos, appcc: t.appcc },
     completoDisponible: config.planCompletoDisponible,
     usuariosIncluidos: 2,
+    // Para mostrar el impuesto según el código postal que se escriba.
+    fiscal: { emisor: config.fiscal.emisorTerritorio, igicPct: config.fiscal.igicPct, ivaPct: config.fiscal.ivaPct },
     pagosSimulados: config.pagosSimulados,
   });
 });
@@ -105,10 +108,16 @@ altaRouter.post(
         email_facturacion: d.email_facturacion || null,
       },
     });
+    // Constancia de la aceptación de las condiciones, la privacidad y el encargo del tratamiento.
+    await comoSistema((c) => c.query(
+      `UPDATE obradores SET condiciones_version = $2, condiciones_aceptadas_en = now(), condiciones_ip = $3 WHERE id = $1`,
+      [obrador.id, config.versionLegal, String(req.ip || "").slice(0, 64)]
+    ));
     try {
       const { url } = await crearSesionPago({ obradorId: obrador.id, metodo: d.metodo });
       const imp = calcularImporte({ plan: d.plan, usuarios_extra: d.usuarios_extra, periodicidad: d.periodicidad });
-      res.status(201).json({ url, plan: imp.plan, importe: imp.periodo, periodicidad: imp.periodicidad, importeMensual: imp.mensual, ahorro: Math.round((imp.sinDescuento - imp.periodo) * 100) / 100 });
+      const impuesto = impuestoParaCliente(d.codigo_postal);
+      res.status(201).json({ url, impuesto: impuesto.tipo, impuestoPct: impuesto.pct, plan: imp.plan, importe: imp.periodo, periodicidad: imp.periodicidad, importeMensual: imp.mensual, ahorro: Math.round((imp.sinDescuento - imp.periodo) * 100) / 100 });
     } catch (e) {
       // El obrador queda "pendiente de pago": el gestor puede entrar y reintentar.
       res.status(e.status || 502).json({ error: e.status ? e.message : "No se pudo abrir la página de pago. Entra con tu email para reintentarlo." });

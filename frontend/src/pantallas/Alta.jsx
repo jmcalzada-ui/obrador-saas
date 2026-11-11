@@ -3,6 +3,17 @@ import { ChevronRight, Minus, Plus, CreditCard, Landmark, CheckCircle2 } from "l
 import { api } from "../api.js";
 import { Aviso, Campo, Opciones, euros } from "../componentes/ui.jsx";
 import { SECTORES } from "./MiObrador.jsx";
+import { EnlacesLegales } from "./Legal.jsx";
+
+/** Impuesto según el código postal del obrador (mismo criterio que el servidor). */
+function impuestoAlta(cp, fiscal) {
+  if (!fiscal || !/^\d{5}$/.test(String(cp).trim())) return null;
+  const p = String(cp).trim().slice(0, 2);
+  const terr = p === "35" || p === "38" ? "canarias" : p === "51" || p === "52" ? "ceuta_melilla" : "peninsula";
+  if (fiscal.emisor === "peninsula") return terr === "peninsula" ? { tipo: "IVA", pct: fiscal.ivaPct } : { tipo: null, pct: 0, nota: "Sin IVA: operación localizada en " + (terr === "canarias" ? "Canarias" : "Ceuta o Melilla") + " (inversión del sujeto pasivo)." };
+  if (terr === "canarias") return { tipo: "IGIC", pct: fiscal.igicPct };
+  return { tipo: null, pct: 0, nota: terr === "peninsula" ? "Sin IGIC ni IVA en la factura: inversión del sujeto pasivo (el IVA lo declara tu empresa)." : "Sin IGIC: operación no sujeta." };
+}
 
 const PASOS = ["Tu obrador", "Facturación", "Contacto", "Tu acceso", "Plan y pago"];
 
@@ -43,6 +54,8 @@ function Formulario() {
   const total = base + f.usuarios_extra * extra;
   const sinDescuento = ((completo ? plan.completoMensualEquivalente : plan.basico) + f.usuarios_extra * plan.usuarioExtra) * 12;
   const sufijo = anual ? "año" : "mes";
+  const imp = impuestoAlta(f.codigo_postal, plan.fiscal);
+  const cuota = imp?.tipo ? Math.round(total * imp.pct) / 100 : 0;
   const opcionPlan = completo ? "completo" : anual ? "basico_anual" : "basico_mensual";
 
   function validar() {
@@ -171,8 +184,13 @@ function Formulario() {
                 </div>
               </div>
               <div className="fila entre" style={{ borderTop: "1px solid var(--linea)", paddingTop: 12 }}>
-                <strong>Total</strong><strong className="numero">{euros(total)} / {sufijo} + impuestos</strong>
+                <strong>{imp?.tipo ? "Base" : "Total"}</strong><strong className="numero">{euros(total)} / {sufijo}{imp ? "" : " + impuestos"}</strong>
               </div>
+              {imp?.tipo && <>
+                <div className="fila entre"><span>{imp.tipo} ({String(imp.pct).replace(".", ",")} %)</span><span className="numero">{euros(cuota)}</span></div>
+                <div className="fila entre"><strong>Total</strong><strong className="numero">{euros(total + cuota)} / {sufijo}</strong></div>
+              </>}
+              {imp?.nota && <p className="suave pequeno">{imp.nota}</p>}
               {anual && <p className="suave pequeno">Equivale a {euros(total / 12)} al mes. Ahorras {euros(sinDescuento - total)} al año frente a pagar mes a mes.</p>}
             </div>
             <div className="campo">
@@ -191,7 +209,12 @@ function Formulario() {
             </div>
             <label className="fila" style={{ alignItems: "flex-start", cursor: "pointer" }}>
               <input type="checkbox" checked={f.acepta_condiciones} onChange={(e) => c({ acepta_condiciones: e.target.checked })} style={{ width: 24, height: 24, marginTop: 2 }} />
-              <span>Acepto las condiciones del servicio y la política de privacidad, y el contrato de encargo del tratamiento de datos.</span>
+              <span>
+                He leído y acepto las <a href="/legal/condiciones" target="_blank" rel="noopener">condiciones de contratación</a>,
+                la <a href="/legal/privacidad" target="_blank" rel="noopener">política de privacidad</a> y
+                el <a href="/legal/encargo" target="_blank" rel="noopener">contrato de encargo del tratamiento de datos</a>.
+                Declaro que contrato como empresa o profesional.
+              </span>
             </label>
           </>
         )}
@@ -206,6 +229,7 @@ function Formulario() {
           )}
         </div>
         <p className="suave pequeno">¿Ya tienes cuenta? <a href="/">Entrar</a></p>
+        <EnlacesLegales />
       </div>
     </main>
   );
